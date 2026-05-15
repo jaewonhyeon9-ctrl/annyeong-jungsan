@@ -445,7 +445,14 @@ ${center.name} ${partLabel(partId)} 파트 정산앱 계정이 발급되었습�
                                         {owner.email}
                                       </div>
                                     </div>
-                                    {isProfileComplete(owner) ? (
+                                    {!owner.active ? (
+                                      <span
+                                        className="rounded bg-clay-500/20 px-2 py-0.5 text-[10px] font-bold text-clay-700"
+                                        title="가입 신청 접수 — 승인 필요"
+                                      >
+                                        ⏳ 승인 대기
+                                      </span>
+                                    ) : isProfileComplete(owner) ? (
                                       <span
                                         className="rounded bg-moss-500/15 px-2 py-0.5 text-[9px] font-medium text-moss-700"
                                         title="연락처/정산 계좌 모두 입력됨"
@@ -458,11 +465,6 @@ ${center.name} ${partLabel(partId)} 파트 정산앱 계정이 발급되었습�
                                         title="원장님이 본인 정보 입력 필요"
                                       >
                                         ⚠️ 미완성
-                                      </span>
-                                    )}
-                                    {!owner.active && (
-                                      <span className="rounded bg-sand-300 px-2 py-0.5 text-[9px] text-sand-700">
-                                        비활성
                                       </span>
                                     )}
                                   </>
@@ -485,19 +487,29 @@ ${center.name} ${partLabel(partId)} 파트 정산앱 계정이 발급되었습�
                               {/* 하단: 액션 버튼 (계정 있을 때만) */}
                               {owner && (
                                 <div className="mt-2 flex flex-wrap gap-1.5">
+                                  {!owner.active ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleActive(owner)}
+                                      className="flex-1 rounded bg-moss-500 px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-moss-600"
+                                    >
+                                      ✓ 승인하기
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleActive(owner)}
+                                      className="flex-1 rounded border border-sand-200 bg-white px-2 py-1.5 text-[11px] hover:border-sand-400"
+                                    >
+                                      비활성화
+                                    </button>
+                                  )}
                                   <button
                                     type="button"
                                     onClick={() => copyOnboarding(c, owner, partId)}
                                     className="flex-1 rounded border border-sand-200 bg-white px-2 py-1.5 text-[11px] hover:border-clay-400"
                                   >
                                     📋 안내문자
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleActive(owner)}
-                                    className="flex-1 rounded border border-sand-200 bg-white px-2 py-1.5 text-[11px] hover:border-sand-400"
-                                  >
-                                    {owner.active ? "비활성화" : "활성화"}
                                   </button>
                                   <button
                                     type="button"

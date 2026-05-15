@@ -126,6 +126,9 @@ export const mockDataSource: DataSource = {
     setMock(profile) {
       setCurrentMockUserId(profile?.id ?? null);
     },
+    async logout() {
+      setCurrentMockUserId(null);
+    },
   },
 
   users: {
@@ -143,7 +146,12 @@ export const mockDataSource: DataSource = {
         centerId: input.centerId,
         partId: input.partId,
         displayName: input.displayName,
-        active: true,
+        active: input.active ?? true,
+        phone: input.phone,
+        bankAccount: input.bankAccount,
+        businessNumber: input.businessNumber,
+        contractStartDate: input.contractStartDate,
+        memo: input.memo,
         createdAt: new Date().toISOString(),
       };
       store.users = [user, ...store.users];

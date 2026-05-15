@@ -339,6 +339,10 @@ export const supabaseDataSource: DataSource = {
     setMock(_profile) {
       // no-op in Supabase mode — 실 인증 사용
     },
+    async logout() {
+      const sb = createClient();
+      await sb.auth.signOut();
+    },
   },
 
   users: {

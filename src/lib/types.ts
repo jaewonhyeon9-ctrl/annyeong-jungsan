@@ -70,6 +70,14 @@ export interface UserCreateInput {
   centerId: string | null;
   partId: PartId | null;
   displayName: string;
+  // 셀프 가입(/signup) 시 함께 받는 정보. admin이 직접 만들 땐 비워둘 수 있음.
+  phone?: string;
+  bankAccount?: BankAccount;
+  businessNumber?: string;
+  contractStartDate?: string;
+  memo?: string;
+  // 가입 직후 활성 여부 — 셀프 가입은 false (승인 대기), admin 발급은 true
+  active?: boolean;
 }
 
 export interface Center {

@@ -55,6 +55,7 @@ export interface DataSource {
   me: {
     current(): Promise<UserProfile | null>;
     setMock(profile: UserProfile | null): void; // mock 모드 전용 — 데모 사용자 전환
+    logout(): Promise<void>;
   };
   // 사용자 관리 (admin 권한)
   users: {

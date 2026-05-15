@@ -208,9 +208,14 @@ function LoginInner() {
         </CardBody>
       </Card>
 
-      <Link href="/" className="text-xs text-sand-500 hover:text-sand-700">
-        ← 홈으로
-      </Link>
+      <div className="flex gap-4 text-xs">
+        <Link href="/signup" className="font-medium text-clay-600 hover:text-clay-800">
+          + 원장 가입 신청
+        </Link>
+        <Link href="/" className="text-sand-500 hover:text-sand-700">
+          ← 홈으로
+        </Link>
+      </div>
     </main>
   );
 }
