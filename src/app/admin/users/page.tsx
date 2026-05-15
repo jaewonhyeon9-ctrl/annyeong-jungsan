@@ -274,71 +274,127 @@ export default function AdminUsersPage() {
         <CardHeader>
           <CardTitle>사용자 목록 ({users.length})</CardTitle>
         </CardHeader>
-        <CardBody className="overflow-x-auto">
+        <CardBody>
           {!loaded ? (
             <div className="py-6 text-center text-sm text-sand-500">로딩 중...</div>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-sand-200 text-left text-[11px] uppercase tracking-wider text-sand-500">
-                  <th className="py-2">이름</th>
-                  <th className="py-2">이메일</th>
-                  <th className="py-2">역할</th>
-                  <th className="py-2">센터</th>
-                  <th className="py-2">파트</th>
-                  <th className="py-2">상태</th>
-                  <th className="py-2 text-right">관리</th>
-                </tr>
-              </thead>
-              <tbody>
+            <>
+              {/* 데스크탑 — 테이블 */}
+              <div className="hidden md:block">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-sand-200 text-left text-[11px] uppercase tracking-wider text-sand-500">
+                      <th className="py-2">이름</th>
+                      <th className="py-2">이메일</th>
+                      <th className="py-2">역할</th>
+                      <th className="py-2">센터</th>
+                      <th className="py-2">파트</th>
+                      <th className="py-2">상태</th>
+                      <th className="py-2 text-right">관리</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((u) => (
+                      <tr key={u.id} className="border-b border-sand-100">
+                        <td className="py-2 font-medium text-sand-800">
+                          {u.displayName}
+                        </td>
+                        <td className="py-2 text-sand-600">{u.email}</td>
+                        <td className="py-2">
+                          <RoleBadge role={u.role} />
+                        </td>
+                        <td className="py-2 text-sand-700">
+                          {centerLabel(u.centerId)}
+                        </td>
+                        <td className="py-2 text-sand-700">{partLabel(u.partId)}</td>
+                        <td className="py-2">
+                          <span
+                            className={`text-[11px] ${
+                              u.active ? "text-moss-600" : "text-sand-400"
+                            }`}
+                          >
+                            {u.active ? "활성" : "비활성"}
+                          </span>
+                        </td>
+                        <td className="py-2 text-right">
+                          <button
+                            type="button"
+                            onClick={() => toggleActive(u)}
+                            className="mr-1 rounded border border-sand-200 px-2 py-1 text-[11px] hover:border-sand-400"
+                          >
+                            {u.active ? "비활성" : "활성"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => resetPassword(u)}
+                            className="rounded border border-sand-200 px-2 py-1 text-[11px] hover:border-sand-400"
+                          >
+                            비번 리셋
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* 모바일 — 카드 리스트 */}
+              <ul className="space-y-2 md:hidden">
                 {users.map((u) => (
-                  <tr key={u.id} className="border-b border-sand-100">
-                    <td className="py-2 font-medium text-sand-800">
-                      {u.displayName}
-                    </td>
-                    <td className="py-2 text-sand-600">{u.email}</td>
-                    <td className="py-2">
-                      <span
-                        className={`rounded px-2 py-0.5 text-[10px] font-medium ${
-                          u.role === "admin"
-                            ? "bg-moss-500/15 text-moss-700"
-                            : "bg-clay-500/15 text-clay-700"
-                        }`}
-                      >
-                        {u.role === "admin" ? "관리자" : "원장"}
-                      </span>
-                    </td>
-                    <td className="py-2 text-sand-700">{centerLabel(u.centerId)}</td>
-                    <td className="py-2 text-sand-700">{partLabel(u.partId)}</td>
-                    <td className="py-2">
-                      <span
-                        className={`text-[11px] ${
-                          u.active ? "text-moss-600" : "text-sand-400"
-                        }`}
-                      >
-                        {u.active ? "활성" : "비활성"}
-                      </span>
-                    </td>
-                    <td className="py-2 text-right">
+                  <li
+                    key={u.id}
+                    className="rounded-xl border border-sand-200 bg-white p-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate font-semibold text-sand-800">
+                            {u.displayName}
+                          </span>
+                          <RoleBadge role={u.role} />
+                        </div>
+                        <div className="mt-0.5 truncate text-xs text-sand-500">
+                          {u.email}
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-1 text-[10px] text-sand-600">
+                          <span className="rounded bg-sand-100 px-1.5 py-0.5">
+                            {centerLabel(u.centerId)}
+                          </span>
+                          <span className="rounded bg-sand-100 px-1.5 py-0.5">
+                            {partLabel(u.partId)}
+                          </span>
+                          <span
+                            className={`rounded px-1.5 py-0.5 ${
+                              u.active
+                                ? "bg-moss-500/15 text-moss-700"
+                                : "bg-sand-200 text-sand-500"
+                            }`}
+                          >
+                            {u.active ? "활성" : "비활성"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex gap-2">
                       <button
                         type="button"
                         onClick={() => toggleActive(u)}
-                        className="mr-1 rounded border border-sand-200 px-2 py-1 text-[11px] hover:border-sand-400"
+                        className="flex-1 rounded-lg border border-sand-200 bg-white px-3 py-2 text-xs hover:border-sand-400"
                       >
-                        {u.active ? "비활성" : "활성"}
+                        {u.active ? "비활성화" : "활성화"}
                       </button>
                       <button
                         type="button"
                         onClick={() => resetPassword(u)}
-                        className="rounded border border-sand-200 px-2 py-1 text-[11px] hover:border-sand-400"
+                        className="flex-1 rounded-lg border border-sand-200 bg-white px-3 py-2 text-xs hover:border-sand-400"
                       >
                         비번 리셋
                       </button>
-                    </td>
-                  </tr>
+                    </div>
+                  </li>
                 ))}
-              </tbody>
-            </table>
+              </ul>
+            </>
           )}
         </CardBody>
       </Card>
@@ -359,5 +415,19 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <div className="mb-1 font-medium text-sand-600">{label}</div>
       {children}
     </label>
+  );
+}
+
+function RoleBadge({ role }: { role: UserRole }) {
+  return (
+    <span
+      className={`rounded px-2 py-0.5 text-[10px] font-medium ${
+        role === "admin"
+          ? "bg-moss-500/15 text-moss-700"
+          : "bg-clay-500/15 text-clay-700"
+      }`}
+    >
+      {role === "admin" ? "관리자" : "원장"}
+    </span>
   );
 }

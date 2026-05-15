@@ -9,9 +9,17 @@ import { searchPatients, visitsByPatient } from "@/lib/patient";
 import { INFLOW_CHANNELS, type Patient, type Visit } from "@/lib/types";
 import { useCurrentCenter } from "@/lib/use-current-center";
 
+type LapseFilter = "all" | "30" | "60" | "90";
+
+function daysSince(iso: string): number {
+  const d = new Date(iso).getTime();
+  return Math.floor((Date.now() - d) / 86400000);
+}
+
 export default function PatientsPage() {
   const { centerId, loaded: centerLoaded, error: centerError } = useCurrentCenter();
   const [q, setQ] = useState("");
+  const [lapse, setLapse] = useState<LapseFilter>("all");
   const [patients, setPatients] = useState<Patient[]>([]);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -41,7 +49,32 @@ export default function PatientsPage() {
     };
   }, [centerId, centerLoaded]);
 
-  const list = useMemo(() => searchPatients(patients, q), [patients, q]);
+  // 검색 → 미내방 필터 적용
+  const list = useMemo(() => {
+    const searched = searchPatients(patients, q);
+    if (lapse === "all") return searched;
+    const threshold = parseInt(lapse, 10);
+    return searched.filter((p) => {
+      const lastVisit = visitsByPatient(visits, p.id)[0];
+      // 방문 없는 환자: 첫 방문일 기준으로 판정
+      const baseline = lastVisit?.visitDate ?? p.firstVisitDate;
+      return daysSince(baseline) >= threshold;
+    });
+  }, [patients, visits, q, lapse]);
+
+  // 미내방 카운트 — 탭 라벨용
+  const lapseCounts = useMemo(() => {
+    const counts: Record<LapseFilter, number> = { all: patients.length, "30": 0, "60": 0, "90": 0 };
+    for (const p of patients) {
+      const lastVisit = visitsByPatient(visits, p.id)[0];
+      const baseline = lastVisit?.visitDate ?? p.firstVisitDate;
+      const days = daysSince(baseline);
+      if (days >= 30) counts["30"] += 1;
+      if (days >= 60) counts["60"] += 1;
+      if (days >= 90) counts["90"] += 1;
+    }
+    return counts;
+  }, [patients, visits]);
 
   const channelLabel = (id: string) =>
     INFLOW_CHANNELS.find((c) => c.id === id)?.label ?? id;
@@ -72,6 +105,34 @@ export default function PatientsPage() {
           className="w-full rounded-2xl border border-sand-200 bg-white px-4 py-3 text-sm focus:border-clay-400 focus:outline-none"
         />
 
+        {/* CRM — 미내방 필터 */}
+        <div className="flex gap-1.5 overflow-x-auto">
+          {(
+            [
+              { v: "all", l: "전체" },
+              { v: "30", l: "30일+" },
+              { v: "60", l: "60일+" },
+              { v: "90", l: "90일+" },
+            ] as { v: LapseFilter; l: string }[]
+          ).map((opt) => (
+            <button
+              key={opt.v}
+              type="button"
+              onClick={() => setLapse(opt.v)}
+              className={`flex-shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                lapse === opt.v
+                  ? "border-clay-500 bg-clay-500/10 text-clay-700"
+                  : "border-sand-200 bg-white text-sand-700"
+              }`}
+            >
+              {opt.l}{" "}
+              <span className="ml-0.5 text-[10px] text-sand-500 tabular">
+                ({lapseCounts[opt.v]})
+              </span>
+            </button>
+          ))}
+        </div>
+
         <div className="space-y-2">
           {!loaded ? (
             <Card>
@@ -93,19 +154,27 @@ export default function PatientsPage() {
             </Card>
           ) : (
             list.map((p) => {
-              const visitCount = visitsByPatient(visits, p.id).length;
+              const patientVisits = visitsByPatient(visits, p.id);
+              const visitCount = patientVisits.length;
+              const lastVisit = patientVisits[0];
+              const baseline = lastVisit?.visitDate ?? p.firstVisitDate;
+              const days = daysSince(baseline);
+              const isLapsed = days >= 30;
+
               return (
                 <Link
                   key={p.id}
                   href={`/owner/patients/${p.id}`}
-                  className="block rounded-2xl border border-sand-200 bg-white px-5 py-4 shadow-sm transition hover:border-clay-400"
+                  className={`block rounded-2xl border bg-white px-5 py-4 shadow-sm transition hover:border-clay-400 ${
+                    isLapsed ? "border-clay-300" : "border-sand-200"
+                  }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
                       <div className="text-xs font-mono text-sand-500 tabular">
                         {p.id}
                       </div>
-                      <div className="mt-0.5 text-base font-semibold text-sand-800">
+                      <div className="mt-0.5 truncate text-base font-semibold text-sand-800">
                         {p.personal?.name ?? "(이름 미입력)"}
                       </div>
                       <div className="mt-1 flex flex-wrap gap-1">
@@ -126,8 +195,18 @@ export default function PatientsPage() {
                       <div className="text-lg font-bold text-clay-600 tabular">
                         {visitCount}회
                       </div>
-                      <div className="mt-1 text-[10px] text-sand-500">
-                        최초 {fmtDate(p.firstVisitDate)}
+                      <div
+                        className={`mt-1 text-[10px] tabular ${
+                          isLapsed ? "font-semibold text-clay-700" : "text-sand-500"
+                        }`}
+                      >
+                        {lastVisit ? (
+                          <>
+                            {days}일 전{isLapsed ? " ⚠️" : ""}
+                          </>
+                        ) : (
+                          `등록 ${days}일`
+                        )}
                       </div>
                     </div>
                   </div>

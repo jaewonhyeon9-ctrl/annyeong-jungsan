@@ -529,7 +529,8 @@ export default function AdminDashboard() {
               집계할 매출이 없습니다.
             </div>
           ) : (
-            <table className="w-full text-sm tabular">
+            <div className="overflow-x-auto">
+            <table className="w-full min-w-[420px] text-sm tabular">
               <thead>
                 <tr className="border-b border-sand-200 text-left text-[11px] uppercase tracking-wider text-sand-500">
                   <th className="py-2">파트</th>
@@ -563,6 +564,7 @@ export default function AdminDashboard() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </CardBody>
       </Card>

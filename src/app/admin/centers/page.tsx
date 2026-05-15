@@ -429,79 +429,84 @@ ${center.name} ${partLabel(partId)} 파트 정산앱 계정이 발급되었습�
 
                         return (
                           <div key={partId}>
-                            <div className="flex items-center justify-between gap-2 rounded-lg bg-sand-100/60 px-3 py-2">
-                              <div className="flex items-center gap-2">
+                            <div className="rounded-lg bg-sand-100/60 px-3 py-2.5">
+                              {/* 상단: 파트 + 원장 정보 */}
+                              <div className="flex flex-wrap items-center gap-2">
                                 <span className="rounded-full bg-clay-500/15 px-2 py-0.5 text-[10px] font-medium text-clay-700">
                                   {partLabel(partId)}
                                 </span>
                                 {owner ? (
-                                  <div className="text-xs">
-                                    <span className="font-medium text-sand-800">
-                                      {owner.displayName}
-                                    </span>
-                                    <span className="ml-1 text-sand-500">
-                                      ({owner.email})
-                                    </span>
+                                  <>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="truncate text-xs font-medium text-sand-800">
+                                        {owner.displayName}
+                                      </div>
+                                      <div className="truncate text-[10px] text-sand-500">
+                                        {owner.email}
+                                      </div>
+                                    </div>
+                                    {isProfileComplete(owner) ? (
+                                      <span
+                                        className="rounded bg-moss-500/15 px-2 py-0.5 text-[9px] font-medium text-moss-700"
+                                        title="연락처/정산 계좌 모두 입력됨"
+                                      >
+                                        ✓ 완성
+                                      </span>
+                                    ) : (
+                                      <span
+                                        className="rounded bg-clay-500/15 px-2 py-0.5 text-[9px] font-medium text-clay-700"
+                                        title="원장님이 본인 정보 입력 필요"
+                                      >
+                                        ⚠️ 미완성
+                                      </span>
+                                    )}
                                     {!owner.active && (
-                                      <span className="ml-1 rounded bg-sand-300 px-1 text-[9px] text-sand-700">
+                                      <span className="rounded bg-sand-300 px-2 py-0.5 text-[9px] text-sand-700">
                                         비활성
                                       </span>
                                     )}
-                                  </div>
+                                  </>
                                 ) : (
-                                  <span className="text-xs text-sand-500">
-                                    계정 없음
-                                  </span>
+                                  <>
+                                    <span className="flex-1 text-xs text-sand-500">
+                                      계정 없음
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => openAccountForm(c.id, partId)}
+                                      className="rounded bg-clay-500 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-clay-600"
+                                    >
+                                      + 계정 생성
+                                    </button>
+                                  </>
                                 )}
                               </div>
-                              {owner ? (
-                                <div className="flex items-center gap-1">
-                                  {isProfileComplete(owner) ? (
-                                    <span
-                                      className="rounded bg-moss-500/15 px-2 py-0.5 text-[9px] font-medium text-moss-700"
-                                      title="연락처/정산 계좌 모두 입력됨"
-                                    >
-                                      ✓ 완성
-                                    </span>
-                                  ) : (
-                                    <span
-                                      className="rounded bg-clay-500/15 px-2 py-0.5 text-[9px] font-medium text-clay-700"
-                                      title="원장님이 본인 정보 입력 필요"
-                                    >
-                                      ⚠️ 미완성
-                                    </span>
-                                  )}
+
+                              {/* 하단: 액션 버튼 (계정 있을 때만) */}
+                              {owner && (
+                                <div className="mt-2 flex flex-wrap gap-1.5">
                                   <button
                                     type="button"
                                     onClick={() => copyOnboarding(c, owner, partId)}
-                                    className="rounded border border-sand-200 bg-white px-2 py-1 text-[10px] hover:border-clay-400"
-                                    title="원장님께 보낼 안내 문자"
+                                    className="flex-1 rounded border border-sand-200 bg-white px-2 py-1.5 text-[11px] hover:border-clay-400"
                                   >
                                     📋 안내문자
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => toggleActive(owner)}
-                                    className="rounded border border-sand-200 bg-white px-2 py-1 text-[10px] hover:border-sand-400"
+                                    className="flex-1 rounded border border-sand-200 bg-white px-2 py-1.5 text-[11px] hover:border-sand-400"
                                   >
-                                    {owner.active ? "비활성" : "활성"}
+                                    {owner.active ? "비활성화" : "활성화"}
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => resetPassword(owner)}
-                                    className="rounded border border-sand-200 bg-white px-2 py-1 text-[10px] hover:border-sand-400"
+                                    className="flex-1 rounded border border-sand-200 bg-white px-2 py-1.5 text-[11px] hover:border-sand-400"
                                   >
                                     비번 리셋
                                   </button>
                                 </div>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => openAccountForm(c.id, partId)}
-                                  className="rounded bg-clay-500 px-2 py-1 text-[10px] font-medium text-white hover:bg-clay-600"
-                                >
-                                  + 계정 생성
-                                </button>
                               )}
                             </div>
 

@@ -120,6 +120,72 @@ export default function PatientDetailPage({
           </CardBody>
         </Card>
 
+        {/* CRM 통계 */}
+        {(() => {
+          const totalRevenue = visits.reduce(
+            (s, v) =>
+              s + v.sales.reduce((a, l) => a + l.cash + l.card, 0),
+            0
+          );
+          const avgTicket =
+            visits.length > 0 ? Math.round(totalRevenue / visits.length) : 0;
+          const lastVisit = visits[0];
+          const daysSince = lastVisit
+            ? Math.floor(
+                (Date.now() - new Date(lastVisit.visitDate).getTime()) /
+                  86400000
+              )
+            : null;
+
+          return (
+            <div className="grid grid-cols-3 gap-2">
+              <Card>
+                <CardBody className="text-center">
+                  <div className="text-[10px] uppercase text-sand-500">
+                    총 매출
+                  </div>
+                  <div className="mt-0.5 text-sm font-bold tabular text-clay-600">
+                    {fmtWon(totalRevenue)}
+                  </div>
+                </CardBody>
+              </Card>
+              <Card>
+                <CardBody className="text-center">
+                  <div className="text-[10px] uppercase text-sand-500">
+                    평균 객단가
+                  </div>
+                  <div className="mt-0.5 text-sm font-bold tabular text-sand-800">
+                    {fmtWon(avgTicket)}
+                  </div>
+                </CardBody>
+              </Card>
+              <Card>
+                <CardBody className="text-center">
+                  <div className="text-[10px] uppercase text-sand-500">
+                    마지막 방문
+                  </div>
+                  <div
+                    className={`mt-0.5 text-sm font-bold tabular ${
+                      daysSince !== null && daysSince >= 30
+                        ? "text-clay-700"
+                        : "text-sand-800"
+                    }`}
+                  >
+                    {daysSince === null
+                      ? "—"
+                      : daysSince === 0
+                      ? "오늘"
+                      : `${daysSince}일 전`}
+                  </div>
+                </CardBody>
+              </Card>
+            </div>
+          );
+        })()}
+
+        {/* CRM — 카톡 메시지 템플릿 */}
+        <MessageTemplates patient={patient} />
+
         {/* 새 방문 차트 작성 + 차트 수정 */}
         <div className="grid grid-cols-[1fr_auto] gap-2">
           <Link
@@ -242,6 +308,83 @@ function Field({ label, value }: { label: string; value: string }) {
       <dt className="text-sand-500">{label}</dt>
       <dd className="font-medium text-sand-800">{value}</dd>
     </div>
+  );
+}
+
+function MessageTemplates({ patient }: { patient: Patient }) {
+  const name = patient.personal?.name ?? "고객";
+  const templates = [
+    {
+      key: "reminder",
+      label: "재방문 안내",
+      body: `안녕하세요 ${name}님,
+오랜만에 인사드립니다. 마지막 방문 이후 시간이 좀 지났네요.
+컨디션 점검 차원에서 한 번 들러주시면 좋을 것 같습니다.
+편하신 시간 알려주세요. 감사합니다.`,
+    },
+    {
+      key: "thanks",
+      label: "감사 메시지",
+      body: `안녕하세요 ${name}님,
+오늘 방문해 주셔서 감사합니다.
+처치 후 변화나 불편하신 점 있으면 언제든 연락주세요.`,
+    },
+    {
+      key: "appointment",
+      label: "예약 확인",
+      body: `${name}님 안녕하세요.
+예약 확인 안내드립니다.
+
+📅 일시: (날짜/시간 입력)
+📍 장소: (지점명 입력)
+
+부득이한 변경 시 전날까지 알려주시면 감사하겠습니다.`,
+    },
+    {
+      key: "review",
+      label: "리뷰 요청",
+      body: `${name}님 안녕하세요.
+오늘 시술 만족스러우셨길 바랍니다.
+가능하시면 네이버 플레이스 / 인스타그램에
+짧은 후기 남겨주시면 큰 힘이 됩니다.
+[링크 첨부]
+감사합니다.`,
+    },
+  ];
+
+  async function copy(text: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      alert(`'${label}' 문자가 복사되었습니다. 카톡/문자에 붙여넣으세요.`);
+    } catch {
+      prompt("문자 (수동 복사):", text);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>카톡 / 문자 템플릿</CardTitle>
+      </CardHeader>
+      <CardBody>
+        <div className="grid grid-cols-2 gap-2">
+          {templates.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => copy(t.body, t.label)}
+              className="rounded-lg border border-sand-200 bg-white px-3 py-2.5 text-xs font-medium text-sand-700 transition hover:border-clay-400"
+            >
+              📋 {t.label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-[10px] text-sand-500">
+          버튼 클릭 → 클립보드에 자동 복사. 카톡/문자 앱에 붙여넣어 전송하세요.
+          내용은 필요에 따라 수정하셔도 됩니다.
+        </p>
+      </CardBody>
+    </Card>
   );
 }
 
