@@ -1,18 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { getDataSource } from "@/lib/data";
 import { fmtDate } from "@/lib/format";
-import { PARTS, type Center, type PartId } from "@/lib/types";
+import {
+  PARTS,
+  type Center,
+  type PartId,
+  type UserProfile,
+} from "@/lib/types";
 
-// 법인 admin — 지점(병원) 등록 / 운영 파트 설정
+// 법인 admin — 지점(병원) 등록 + 파트별 원장 계정 발급
 
 const ALL_PARTS: PartId[] = PARTS.map((p) => p.id);
 
 export default function AdminCentersPage() {
   const [centers, setCenters] = useState<Center[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,12 +40,26 @@ export default function AdminCentersPage() {
   });
   const [saving, setSaving] = useState(false);
 
+  // 어느 카드에서 어느 파트 계정 생성 폼 열려있는지
+  const [accountForm, setAccountForm] = useState<{
+    centerId: string;
+    partId: PartId;
+    displayName: string;
+    email: string;
+    password: string;
+  } | null>(null);
+  const [creatingAccount, setCreatingAccount] = useState(false);
+
   async function load() {
     setError(null);
     try {
       const data = await getDataSource();
-      const list = await data.centers.list();
-      setCenters(list);
+      const [centersList, usersList] = await Promise.all([
+        data.centers.list(),
+        data.users.list(),
+      ]);
+      setCenters(centersList);
+      setUsers(usersList);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -51,7 +71,7 @@ export default function AdminCentersPage() {
     load();
   }, []);
 
-  async function handleCreate() {
+  async function handleCreateCenter() {
     if (!newForm.name.trim()) {
       alert("지점 이름은 필수입니다.");
       return;
@@ -102,7 +122,80 @@ export default function AdminCentersPage() {
     }
   }
 
+  function openAccountForm(centerId: string, partId: PartId) {
+    setAccountForm({
+      centerId,
+      partId,
+      displayName: "",
+      email: "",
+      password: "",
+    });
+  }
+
+  async function handleCreateAccount() {
+    if (!accountForm) return;
+    if (
+      !accountForm.displayName.trim() ||
+      !accountForm.email.trim() ||
+      !accountForm.password.trim()
+    ) {
+      alert("이름/이메일/비밀번호 모두 입력해주세요.");
+      return;
+    }
+    setCreatingAccount(true);
+    try {
+      const data = await getDataSource();
+      await data.users.create({
+        email: accountForm.email.trim(),
+        password: accountForm.password,
+        displayName: accountForm.displayName.trim(),
+        role: "owner",
+        centerId: accountForm.centerId,
+        partId: accountForm.partId,
+      });
+      setAccountForm(null);
+      await load();
+    } catch (err) {
+      alert(`계정 생성 실패: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setCreatingAccount(false);
+    }
+  }
+
+  async function toggleActive(u: UserProfile) {
+    try {
+      const data = await getDataSource();
+      await data.users.update(u.id, { active: !u.active });
+      await load();
+    } catch (err) {
+      alert(`업데이트 실패: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  async function resetPassword(u: UserProfile) {
+    const pwd = prompt(`${u.displayName} 의 새 비밀번호 입력:`);
+    if (!pwd) return;
+    try {
+      const data = await getDataSource();
+      await data.users.resetPassword(u.id, pwd);
+      alert("비밀번호가 재설정되었습니다.");
+    } catch (err) {
+      alert(`비밀번호 리셋 실패: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   const partLabel = (id: PartId) => PARTS.find((p) => p.id === id)?.label ?? id;
+
+  // 센터 × 파트 → 원장 매핑
+  const ownerByCenterPart = useMemo(() => {
+    const m = new Map<string, UserProfile>();
+    for (const u of users) {
+      if (u.role === "owner" && u.centerId && u.partId) {
+        m.set(`${u.centerId}|${u.partId}`, u);
+      }
+    }
+    return m;
+  }, [users]);
 
   return (
     <div className="space-y-5">
@@ -189,7 +282,7 @@ export default function AdminCentersPage() {
               </button>
               <button
                 type="button"
-                onClick={handleCreate}
+                onClick={handleCreateCenter}
                 disabled={saving}
                 className="rounded-lg bg-sand-800 px-4 py-2 text-sm font-semibold text-white hover:bg-sand-900 disabled:opacity-60"
               >
@@ -221,13 +314,16 @@ export default function AdminCentersPage() {
           </CardBody>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-4">
           {centers.map((c) => (
             <Card key={c.id}>
               <CardBody>
+                {/* 지점 헤더 */}
                 <div className="flex items-start justify-between">
                   <div>
-                    <div className="text-lg font-bold text-sand-900">{c.name}</div>
+                    <div className="text-lg font-bold text-sand-900">
+                      {c.name}
+                    </div>
                     {c.address && (
                       <div className="mt-0.5 text-xs text-sand-500">
                         {c.address}
@@ -247,6 +343,7 @@ export default function AdminCentersPage() {
                   </div>
                 </div>
 
+                {/* 운영 파트 토글 */}
                 <div className="mt-4 border-t border-sand-200 pt-3">
                   <div className="mb-2 text-[10px] uppercase tracking-wider text-sand-500">
                     운영 파트 (클릭으로 토글)
@@ -269,6 +366,151 @@ export default function AdminCentersPage() {
                         </button>
                       );
                     })}
+                  </div>
+                </div>
+
+                {/* 파트별 원장 계정 */}
+                <div className="mt-4 border-t border-sand-200 pt-3">
+                  <div className="mb-2 text-[10px] uppercase tracking-wider text-sand-500">
+                    파트별 원장 계정
+                  </div>
+                  <div className="space-y-2">
+                    {c.enabledParts.length === 0 ? (
+                      <div className="py-2 text-xs text-sand-500">
+                        운영 파트를 먼저 선택하세요.
+                      </div>
+                    ) : (
+                      c.enabledParts.map((partId) => {
+                        const owner = ownerByCenterPart.get(`${c.id}|${partId}`);
+                        const formOpen =
+                          accountForm?.centerId === c.id &&
+                          accountForm?.partId === partId;
+
+                        return (
+                          <div key={partId}>
+                            <div className="flex items-center justify-between gap-2 rounded-lg bg-sand-100/60 px-3 py-2">
+                              <div className="flex items-center gap-2">
+                                <span className="rounded-full bg-clay-500/15 px-2 py-0.5 text-[10px] font-medium text-clay-700">
+                                  {partLabel(partId)}
+                                </span>
+                                {owner ? (
+                                  <div className="text-xs">
+                                    <span className="font-medium text-sand-800">
+                                      {owner.displayName}
+                                    </span>
+                                    <span className="ml-1 text-sand-500">
+                                      ({owner.email})
+                                    </span>
+                                    {!owner.active && (
+                                      <span className="ml-1 rounded bg-sand-300 px-1 text-[9px] text-sand-700">
+                                        비활성
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-sand-500">
+                                    계정 없음
+                                  </span>
+                                )}
+                              </div>
+                              {owner ? (
+                                <div className="flex gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleActive(owner)}
+                                    className="rounded border border-sand-200 bg-white px-2 py-1 text-[10px] hover:border-sand-400"
+                                  >
+                                    {owner.active ? "비활성" : "활성"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => resetPassword(owner)}
+                                    className="rounded border border-sand-200 bg-white px-2 py-1 text-[10px] hover:border-sand-400"
+                                  >
+                                    비번 리셋
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => openAccountForm(c.id, partId)}
+                                  className="rounded bg-clay-500 px-2 py-1 text-[10px] font-medium text-white hover:bg-clay-600"
+                                >
+                                  + 계정 생성
+                                </button>
+                              )}
+                            </div>
+
+                            {/* 인라인 계정 생성 폼 */}
+                            {formOpen && accountForm && (
+                              <div className="mt-2 space-y-2 rounded-lg border border-clay-300 bg-clay-500/5 p-3">
+                                <div className="text-xs font-semibold text-clay-700">
+                                  {partLabel(partId)} 원장 계정 생성
+                                </div>
+                                <div className="grid gap-2 md:grid-cols-3">
+                                  <input
+                                    placeholder="이름 (표시명)"
+                                    value={accountForm.displayName}
+                                    onChange={(e) =>
+                                      setAccountForm({
+                                        ...accountForm,
+                                        displayName: e.target.value,
+                                      })
+                                    }
+                                    className="rounded-lg border border-sand-200 bg-white px-2 py-1.5 text-xs focus:border-clay-400 focus:outline-none"
+                                  />
+                                  <input
+                                    type="email"
+                                    placeholder={`${partId}@annyeong.com`}
+                                    value={accountForm.email}
+                                    onChange={(e) =>
+                                      setAccountForm({
+                                        ...accountForm,
+                                        email: e.target.value,
+                                      })
+                                    }
+                                    className="rounded-lg border border-sand-200 bg-white px-2 py-1.5 text-xs focus:border-clay-400 focus:outline-none"
+                                  />
+                                  <input
+                                    type="text"
+                                    placeholder="초기 비밀번호"
+                                    value={accountForm.password}
+                                    onChange={(e) =>
+                                      setAccountForm({
+                                        ...accountForm,
+                                        password: e.target.value,
+                                      })
+                                    }
+                                    className="rounded-lg border border-sand-200 bg-white px-2 py-1.5 text-xs focus:border-clay-400 focus:outline-none"
+                                  />
+                                </div>
+                                <div className="flex justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setAccountForm(null)}
+                                    className="rounded border border-sand-200 px-3 py-1 text-[11px] text-sand-600"
+                                  >
+                                    취소
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleCreateAccount}
+                                    disabled={creatingAccount}
+                                    className="rounded bg-sand-800 px-3 py-1 text-[11px] font-semibold text-white hover:bg-sand-900 disabled:opacity-60"
+                                  >
+                                    {creatingAccount ? "생성 중..." : "생성"}
+                                  </button>
+                                </div>
+                                <p className="text-[10px] text-sand-500">
+                                  생성된 이메일/비번을 원장님께 안전한 채널로
+                                  전달하세요. 처음 로그인 후 비번 변경 안내 권장.
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
               </CardBody>
