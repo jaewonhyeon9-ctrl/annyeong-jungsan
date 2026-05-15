@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { getDataSource } from "@/lib/data";
 import { fmtWon, todayKST } from "@/lib/format";
+import { resizeToDataUrl } from "@/lib/image";
 import { findService, servicesByPart } from "@/lib/services";
 import { PARTS, type Patient, type PartId } from "@/lib/types";
 import { useCurrentProfile } from "@/lib/use-current-profile";
@@ -60,6 +61,22 @@ export default function NewVisitChartPage({
   const [draft, setDraft] = useState<SaleDraft>({});
   const [memo, setMemo] = useState("");
   const [saving, setSaving] = useState(false);
+  const [beforePhoto, setBeforePhoto] = useState<string | null>(null);
+  const [afterPhoto, setAfterPhoto] = useState<string | null>(null);
+  const beforeRef = useRef<HTMLInputElement>(null);
+  const afterRef = useRef<HTMLInputElement>(null);
+
+  async function onPhotoPicked(
+    file: File,
+    setter: (url: string | null) => void
+  ) {
+    try {
+      const dataUrl = await resizeToDataUrl(file, 800, 0.7);
+      setter(dataUrl);
+    } catch (err) {
+      alert(`사진 처리 실패: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   const total = useMemo(() => {
     let cash = 0,
@@ -104,6 +121,8 @@ export default function NewVisitChartPage({
           };
         }),
         visitMemo: memo || undefined,
+        beforePhotoUrl: beforePhoto ?? undefined,
+        afterPhotoUrl: afterPhoto ?? undefined,
       });
       router.push(`/owner/patients/${patient.id}`);
     } catch (err) {
@@ -301,20 +320,42 @@ export default function NewVisitChartPage({
               className="w-full rounded-lg border border-sand-200 bg-white px-3 py-2 text-sm focus:border-clay-400 focus:outline-none"
             />
             <div className="mt-3 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => alert("Before 사진 (Phase 3)")}
-                className="rounded-lg border border-sand-200 bg-white px-3 py-2 text-xs font-medium text-sand-700 hover:border-clay-400"
-              >
-                📷 Before 사진
-              </button>
-              <button
-                type="button"
-                onClick={() => alert("After 사진 (Phase 3)")}
-                className="rounded-lg border border-sand-200 bg-white px-3 py-2 text-xs font-medium text-sand-700 hover:border-clay-400"
-              >
-                📷 After 사진
-              </button>
+              <PhotoSlot
+                label="Before"
+                photo={beforePhoto}
+                onPick={() => beforeRef.current?.click()}
+                onClear={() => setBeforePhoto(null)}
+              />
+              <PhotoSlot
+                label="After"
+                photo={afterPhoto}
+                onPick={() => afterRef.current?.click()}
+                onClear={() => setAfterPhoto(null)}
+              />
+              <input
+                ref={beforeRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) onPhotoPicked(f, setBeforePhoto);
+                  e.target.value = "";
+                }}
+              />
+              <input
+                ref={afterRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) onPhotoPicked(f, setAfterPhoto);
+                  e.target.value = "";
+                }}
+              />
             </div>
           </CardBody>
         </Card>
@@ -333,5 +374,46 @@ export default function NewVisitChartPage({
         </p>
       </div>
     </div>
+  );
+}
+
+function PhotoSlot({
+  label,
+  photo,
+  onPick,
+  onClear,
+}: {
+  label: string;
+  photo: string | null;
+  onPick: () => void;
+  onClear: () => void;
+}) {
+  if (photo) {
+    return (
+      <div className="relative aspect-square overflow-hidden rounded-lg border border-sand-200">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={photo} alt={label} className="h-full w-full object-cover" />
+        <div className="absolute left-1.5 top-1.5 rounded bg-black/50 px-1.5 py-0.5 text-[10px] font-medium text-white">
+          {label}
+        </div>
+        <button
+          type="button"
+          onClick={onClear}
+          className="absolute right-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white"
+        >
+          ✕
+        </button>
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      className="flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-sand-300 bg-sand-50 text-xs font-medium text-sand-600 hover:border-clay-400 hover:text-clay-600"
+    >
+      <span className="text-xl">📷</span>
+      <span>{label} 촬영</span>
+    </button>
   );
 }

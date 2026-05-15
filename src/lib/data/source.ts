@@ -31,6 +31,8 @@ export interface VisitCreateInput {
   productSales?: Visit["productSales"];
   productConsumption?: Visit["productConsumption"];
   visitMemo?: string;
+  beforePhotoUrl?: string;
+  afterPhotoUrl?: string;
 }
 
 export interface CenterCreateInput {

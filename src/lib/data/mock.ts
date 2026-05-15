@@ -351,6 +351,8 @@ export const mockDataSource: DataSource = {
         productSales: input.productSales ?? [],
         productConsumption: input.productConsumption ?? [],
         visitMemo: input.visitMemo,
+        beforePhotoUrl: input.beforePhotoUrl,
+        afterPhotoUrl: input.afterPhotoUrl,
         createdAt: new Date().toISOString(),
       };
       commit((store) => {

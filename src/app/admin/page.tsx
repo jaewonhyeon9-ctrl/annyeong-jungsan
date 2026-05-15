@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { BarChart, type BarDatum } from "@/components/charts/BarChart";
 import { DonutChart, type DonutSlice } from "@/components/charts/DonutChart";
@@ -42,6 +43,21 @@ export default function AdminDashboard() {
     repeat: number;
     avgTicket: number;
   } | null>(null);
+  const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
+
+  // 승인 대기 카운트
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const data = await getDataSource();
+      const users = await data.users.list();
+      const pending = users.filter((u) => u.role === "owner" && !u.active).length;
+      if (!cancelled) setPendingApprovalCount(pending);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // 센터 목록 — 1번만
   useEffect(() => {
@@ -200,6 +216,26 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-6">
+      {/* 승인 대기 알림 */}
+      {pendingApprovalCount > 0 && (
+        <Link
+          href="/admin/centers"
+          className="block rounded-2xl border-2 border-clay-400 bg-clay-500/10 px-5 py-3 text-sm text-clay-800 hover:bg-clay-500/15"
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="font-semibold">
+                ⏳ 신규 가입 {pendingApprovalCount}명 승인 대기
+              </div>
+              <div className="mt-0.5 text-xs">
+                지점 관리 페이지에서 검토 후 승인해주세요.
+              </div>
+            </div>
+            <span className="text-2xl">→</span>
+          </div>
+        </Link>
+      )}
+
       {/* 필터바 */}
       <Card>
         <CardBody className="flex flex-wrap items-center gap-4">

@@ -337,6 +337,46 @@ export default function PatientDetailPage({
                           {v.visitMemo}
                         </div>
                       )}
+                      {(v.beforePhotoUrl || v.afterPhotoUrl) && (
+                        <div className="mt-2 grid grid-cols-2 gap-1.5">
+                          {v.beforePhotoUrl && (
+                            <a
+                              href={v.beforePhotoUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="relative block aspect-square overflow-hidden rounded-md"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={v.beforePhotoUrl}
+                                alt="Before"
+                                className="h-full w-full object-cover"
+                              />
+                              <span className="absolute left-1 top-1 rounded bg-black/50 px-1 py-0.5 text-[9px] text-white">
+                                Before
+                              </span>
+                            </a>
+                          )}
+                          {v.afterPhotoUrl && (
+                            <a
+                              href={v.afterPhotoUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="relative block aspect-square overflow-hidden rounded-md"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={v.afterPhotoUrl}
+                                alt="After"
+                                className="h-full w-full object-cover"
+                              />
+                              <span className="absolute left-1 top-1 rounded bg-black/50 px-1 py-0.5 text-[9px] text-white">
+                                After
+                              </span>
+                            </a>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
