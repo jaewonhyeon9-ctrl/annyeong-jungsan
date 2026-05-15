@@ -137,8 +137,8 @@ export default function SignupPage() {
   return (
     <main className="mx-auto max-w-md space-y-5 px-5 py-8">
       <header className="text-center">
-        <div className="mb-3 inline-flex items-center rounded-full bg-clay-500/10 px-3 py-1 text-xs font-medium text-clay-600">
-          안녕메디컬
+        <div className="mb-3 inline-flex items-center rounded-full bg-clay-500/10 px-3 py-1 text-xs font-semibold tracking-wide text-clay-600">
+          BeautyChain
         </div>
         <h1 className="text-2xl font-bold tracking-tight text-sand-900">
           원장 가입 신청

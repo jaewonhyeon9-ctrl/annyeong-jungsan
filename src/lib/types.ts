@@ -1,4 +1,4 @@
-// 도메인 모델 — 안녕메디컬 정산
+// 도메인 모델 — BeautyChain
 
 export type PartId =
   | "scalp" // 두피

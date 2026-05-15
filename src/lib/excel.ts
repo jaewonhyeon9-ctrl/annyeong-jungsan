@@ -5,7 +5,7 @@ import type { SettlementResult } from "./settlement";
 import { fmtMonth } from "./format";
 
 // ============================================================
-// 안녕메디컬 정산 — Excel 내보내기
+// BeautyChain — Excel 내보내기
 // 사장님에게 전달할 때 쓰는 양식.
 // 3개 시트: 정산 요약 / 파트별 매출 / 환자 유입
 // ============================================================
@@ -25,7 +25,7 @@ function buildSettlementSheet(
   settlement: SettlementResult
 ): XLSX.WorkSheet {
   const rows: (string | number)[][] = [
-    [`안녕메디컬 ${centerName}`, "", "", ""],
+    [centerName, "", "", ""],
     [`${fmtMonth(month)} 정산 요약`, "", "", ""],
     ["", "", "", ""],
     ["항목", "금액(원)", "", "비고"],
@@ -107,7 +107,7 @@ function buildSalesSheet(
 
   // 일자별 행
   const rows: (string | number)[][] = [
-    [`안녕메디컬 ${centerName} ${fmtMonth(month)} 파트별 매출`],
+    [`${centerName} ${fmtMonth(month)} 파트별 매출`],
     [],
     header,
   ];
@@ -164,7 +164,7 @@ function buildInflowSheet(
   inflow: InflowEntry | undefined
 ): XLSX.WorkSheet {
   const rows: (string | number)[][] = [
-    [`안녕메디컬 ${centerName} ${fmtMonth(month)} 환자 유입`],
+    [`${centerName} ${fmtMonth(month)} 환자 유입`],
     [],
     ["유입경로", "건수"],
   ];
@@ -213,6 +213,6 @@ export function exportSettlementExcel(
   );
 
   const safeCenterName = centerName.replace(/[\\/:*?"<>|]/g, "");
-  const filename = `안녕메디컬_${safeCenterName}_${month}_정산.xlsx`;
+  const filename = `${safeCenterName}_${month}_정산.xlsx`;
   XLSX.writeFile(wb, filename);
 }

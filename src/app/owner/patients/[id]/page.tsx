@@ -150,7 +150,7 @@ export default function PatientDetailPage({
                 </a>
                 <a
                   href={`sms:${patient.personal.phone}?body=${encodeURIComponent(
-                    `${patient.personal.name ?? "고객"}님 안녕하세요.\n안녕메디컬입니다.\n\n`
+                    `${patient.personal.name ?? "고객"}님 안녕하세요.\n\n`
                   )}`}
                   className="flex-1 rounded-lg bg-clay-500 px-3 py-2 text-center text-xs font-medium text-white hover:bg-clay-600"
                 >

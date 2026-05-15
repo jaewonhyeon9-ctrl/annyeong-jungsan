@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "안녕메디컬 정산",
-  description: "안녕메디컬 뷰티센터 매출/정산 관리",
+  title: "BeautyChain — 뷰티센터 다지점 정산",
+  description: "다중 지점 뷰티/메디컬 센터 매출 · 환자 · 정산 통합 관리",
   manifest: "/manifest.webmanifest",
 };
 

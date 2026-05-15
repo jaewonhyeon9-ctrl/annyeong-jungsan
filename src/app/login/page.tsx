@@ -107,8 +107,8 @@ function LoginInner() {
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col items-center justify-center gap-6 px-6 py-12">
       <header className="text-center">
-        <div className="mb-3 inline-flex items-center rounded-full bg-clay-500/10 px-3 py-1 text-xs font-medium text-clay-600">
-          안녕메디컬
+        <div className="mb-3 inline-flex items-center rounded-full bg-clay-500/10 px-3 py-1 text-xs font-semibold tracking-wide text-clay-600">
+          BeautyChain
         </div>
         <h1 className="text-2xl font-bold tracking-tight text-sand-900">로그인</h1>
         <p className="mt-2 text-xs text-sand-600">

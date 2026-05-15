@@ -2,9 +2,9 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "안녕메디컬 정산",
-    short_name: "안녕정산",
-    description: "안녕메디컬 뷰티센터 매출/정산 관리",
+    name: "BeautyChain",
+    short_name: "BeautyChain",
+    description: "다중 지점 뷰티/메디컬 센터 매출 · 환자 · 정산 통합 관리",
     start_url: "/",
     display: "standalone",
     background_color: "#FAF7F2",

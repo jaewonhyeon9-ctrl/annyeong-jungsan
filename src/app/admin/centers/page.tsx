@@ -194,10 +194,10 @@ export default function AdminCentersPage() {
   ): string {
     const site =
       typeof window !== "undefined" ? window.location.origin : "(사이트 URL)";
-    return `[안녕메디컬 정산앱 안내]
+    return `[${center.name} 정산앱 안내]
 
 ${owner.displayName} 원장님 안녕하세요.
-${center.name} ${partLabel(partId)} 파트 정산앱 계정이 발급되었습니다.
+${center.name} ${partLabel(partId)} 파트 BeautyChain 정산앱 계정이 발급되었습니다.
 
 🌐 사이트: ${site}
 📧 이메일: ${owner.email}
@@ -261,7 +261,7 @@ ${center.name} ${partLabel(partId)} 파트 정산앱 계정이 발급되었습�
               <input
                 value={newForm.name}
                 onChange={(e) => setNewForm({ ...newForm, name: e.target.value })}
-                placeholder="안녕메디컬 강남점"
+                placeholder="강남점 / 본점 등"
                 className="w-full rounded-lg border border-sand-200 bg-white px-3 py-2 text-sm focus:border-clay-400 focus:outline-none"
               />
             </Field>
