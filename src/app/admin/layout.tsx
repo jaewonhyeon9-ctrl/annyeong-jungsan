@@ -30,6 +30,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           >
             사용자 관리
           </Link>
+          <Link
+            href="/manual"
+            className="ml-auto rounded-lg px-3 py-1.5 text-xs font-medium text-sand-500 hover:bg-sand-100"
+          >
+            📖 매뉴얼
+          </Link>
         </nav>
       </header>
       <div className="mx-auto max-w-5xl px-5 py-6">{children}</div>
