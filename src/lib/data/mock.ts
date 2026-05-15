@@ -26,6 +26,16 @@ import {
 // Mock 사용자 — 시연용
 const MOCK_USERS: UserProfile[] = [
   {
+    id: "u-main",
+    email: "jaewonhyeon9@gmail.com",
+    role: "admin",
+    centerId: null,
+    partId: null,
+    displayName: "법인 메인",
+    active: true,
+    createdAt: "2026-01-01T00:00:00",
+  },
+  {
     id: "u-admin",
     email: "admin@annyeong.com",
     role: "admin",
@@ -138,6 +148,21 @@ function clone<T>(v: T): T {
   return JSON.parse(JSON.stringify(v));
 }
 
+// 기존 사용자 유지 + 시드의 누락 사용자 자동 보강
+// (앱 업데이트로 새 시드 admin 등 추가 시 기존 localStorage에도 반영됨)
+function mergeUsers(
+  parsed: UserProfile[] | undefined,
+  seeded: UserProfile[]
+): UserProfile[] {
+  if (!parsed) return seeded;
+  const existingIds = new Set(parsed.map((u) => u.id));
+  const existingEmails = new Set(parsed.map((u) => u.email.toLowerCase()));
+  const missing = seeded.filter(
+    (u) => !existingIds.has(u.id) && !existingEmails.has(u.email.toLowerCase())
+  );
+  return [...missing, ...parsed];
+}
+
 function hydrateStore() {
   if (hydrated || typeof window === "undefined") return;
   hydrated = true;
@@ -156,8 +181,9 @@ function hydrateStore() {
       visits: parsed.visits ?? seeded.visits,
       entries: parsed.entries ?? seeded.entries,
       inflows: parsed.inflows ?? seeded.inflows,
-      users: parsed.users ?? seeded.users,
+      users: mergeUsers(parsed.users, seeded.users),
     };
+    persistStore(); // 시드 보강된 사용자 다시 저장
   } catch {
     store = seedStore();
   }
