@@ -1,0 +1,71 @@
+// 데이터 소스 인터페이스 — Mock과 Supabase 양쪽 구현이 따름.
+// 모든 메서드는 async로 통일하여 두 구현이 동일 호출 시그니처를 갖도록 함.
+
+import type {
+  Center,
+  DailyEntry,
+  InflowEntry,
+  Patient,
+  SettlementRule,
+  Visit,
+} from "@/lib/types";
+
+export interface PatientCreateInput {
+  centerId: string;
+  id?: string;                    // 미지정 시 서버/클라이언트가 자동 발급
+  firstVisitDate: string;
+  inflowChannels: Patient["inflowChannels"];
+  consent: boolean;
+  personal?: Patient["personal"];
+  chart?: Patient["chart"];
+}
+
+export interface VisitCreateInput {
+  patientId: string;
+  centerId: string;
+  visitDate: string;
+  partId: Visit["partId"];
+  sales: Visit["sales"];
+  productSales?: Visit["productSales"];
+  productConsumption?: Visit["productConsumption"];
+  visitMemo?: string;
+}
+
+export interface DailyEntryCreateInput {
+  centerId: string;
+  date: string;
+  sales: DailyEntry["sales"];
+  productSales?: DailyEntry["productSales"];
+  productConsumption?: DailyEntry["productConsumption"];
+  note?: string;
+  ocrSource?: DailyEntry["ocrSource"];
+}
+
+export interface DataSource {
+  centers: {
+    list(): Promise<Center[]>;
+    current(): Promise<Center | null>;
+  };
+  patients: {
+    list(centerId?: string): Promise<Patient[]>;
+    get(id: string): Promise<Patient | null>;
+    create(input: PatientCreateInput): Promise<Patient>;
+    update(id: string, patch: Partial<Patient>): Promise<Patient>;
+  };
+  visits: {
+    listByPatient(patientId: string): Promise<Visit[]>;
+    create(input: VisitCreateInput): Promise<Visit>;
+  };
+  entries: {
+    // 방문(Visit) + 수동입력(DailyEntry)을 모두 합산해 일자별 entry로 반환
+    byMonth(centerId: string, yearMonth: string): Promise<DailyEntry[]>;
+    create(input: DailyEntryCreateInput): Promise<DailyEntry>;
+  };
+  inflows: {
+    byMonth(centerId: string, month: string): Promise<InflowEntry | null>;
+    upsert(entry: InflowEntry): Promise<InflowEntry>;
+  };
+  settlement: {
+    rule(centerId: string): Promise<SettlementRule>;
+  };
+}
