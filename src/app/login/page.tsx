@@ -2,11 +2,27 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { Card, CardBody } from "@/components/ui/Card";
 import { isSupabaseActive } from "@/lib/data";
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <LoginInner />
+    </Suspense>
+  );
+}
+
+function LoginFallback() {
+  return (
+    <main className="mx-auto flex min-h-screen max-w-sm items-center justify-center">
+      <div className="text-sm text-sand-500">로딩 중...</div>
+    </main>
+  );
+}
+
+function LoginInner() {
   const router = useRouter();
   const params = useSearchParams();
   const redirect = params.get("redirect") || "/";
