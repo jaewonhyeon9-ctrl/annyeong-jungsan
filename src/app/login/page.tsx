@@ -118,45 +118,7 @@ function LoginInner() {
         </p>
       </header>
 
-      {!isSupabaseActive && mockUsers.length > 0 && (
-        <Card className="w-full">
-          <CardBody>
-            <div className="mb-2 text-xs font-medium text-sand-600">
-              빠른 로그인 (데모)
-            </div>
-            <div className="grid gap-2">
-              {mockUsers.map((u) => (
-                <button
-                  key={u.id}
-                  type="button"
-                  onClick={() => loginAsMock(u)}
-                  className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition hover:border-clay-400 ${
-                    u.role === "admin"
-                      ? "border-moss-300 bg-moss-500/5"
-                      : "border-sand-200 bg-white"
-                  }`}
-                >
-                  <div>
-                    <div className="font-semibold text-sand-800">
-                      {u.displayName}
-                    </div>
-                    <div className="text-[10px] text-sand-500">{u.email}</div>
-                  </div>
-                  <span
-                    className={`rounded px-2 py-0.5 text-[10px] font-medium ${
-                      u.role === "admin"
-                        ? "bg-moss-500/15 text-moss-700"
-                        : "bg-clay-500/15 text-clay-700"
-                    }`}
-                  >
-                    {u.role === "admin" ? "관리자" : u.partId ?? "원장"}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </CardBody>
-        </Card>
-      )}
+{/* 빠른 로그인은 details 아래로 접어둠 — 데모 시연용 */}
 
       <Card className="w-full">
         <CardBody className="space-y-3">
@@ -216,6 +178,33 @@ function LoginInner() {
           ← 홈으로
         </Link>
       </div>
+
+      {/* 데모 계정 (접힌 상태로) */}
+      {!isSupabaseActive && mockUsers.length > 0 && (
+        <details className="w-full">
+          <summary className="cursor-pointer text-center text-[11px] text-sand-400 hover:text-sand-600">
+            데모 계정 보기
+          </summary>
+          <div className="mt-2 grid gap-1.5">
+            {mockUsers.map((u) => (
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => loginAsMock(u)}
+                className="flex items-center justify-between rounded-lg border border-sand-200 bg-white px-3 py-2 text-left text-xs hover:border-clay-400"
+              >
+                <div>
+                  <span className="font-semibold text-sand-800">
+                    {u.displayName}
+                  </span>
+                  <span className="ml-2 text-[10px] text-sand-500">{u.email}</span>
+                </div>
+                <span className="text-[10px] text-sand-400">바로 로그인 →</span>
+              </button>
+            ))}
+          </div>
+        </details>
+      )}
     </main>
   );
 }
