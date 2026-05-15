@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Card, CardBody } from "@/components/ui/Card";
-import { isSupabaseActive } from "@/lib/data";
+import { getDataSource, isSupabaseActive } from "@/lib/data";
+import type { UserProfile } from "@/lib/types";
 
 export default function LoginPage() {
   return (
@@ -33,10 +34,36 @@ function LoginInner() {
   const [error, setError] = useState<string | null>(null);
   const [magicLinkSent, setMagicLinkSent] = useState(false);
 
+  // Mock 사용자 선택 (Supabase 미설정 시 데모용)
+  const [mockUsers, setMockUsers] = useState<UserProfile[]>([]);
+  useEffect(() => {
+    if (isSupabaseActive) return;
+    (async () => {
+      const data = await getDataSource();
+      const users = await data.users.list();
+      setMockUsers(users);
+    })();
+  }, []);
+
+  async function loginAsMock(user: UserProfile) {
+    const data = await getDataSource();
+    data.me.setMock(user);
+    router.push(redirect);
+  }
+
   async function handleEmailPassword() {
     if (!isSupabaseActive) {
-      // 데모 모드 — 그냥 통과
-      router.push(redirect);
+      // 데모 모드 — 이메일로 mock 사용자 찾기
+      const found = mockUsers.find(
+        (u) => u.email.toLowerCase() === email.trim().toLowerCase()
+      );
+      if (!found) {
+        setError(
+          "데모 모드: 이메일이 mock 사용자와 일치하지 않습니다. 아래 빠른 로그인 사용."
+        );
+        return;
+      }
+      await loginAsMock(found);
       return;
     }
     setLoading(true);
@@ -87,9 +114,49 @@ function LoginInner() {
         <p className="mt-2 text-xs text-sand-600">
           {isSupabaseActive
             ? "원장 또는 법인 대표 계정으로 로그인"
-            : "데모 모드 — 아무 값 입력 후 들어가기"}
+            : "데모 모드 — 아래에서 사용자 선택"}
         </p>
       </header>
+
+      {!isSupabaseActive && mockUsers.length > 0 && (
+        <Card className="w-full">
+          <CardBody>
+            <div className="mb-2 text-xs font-medium text-sand-600">
+              빠른 로그인 (데모)
+            </div>
+            <div className="grid gap-2">
+              {mockUsers.map((u) => (
+                <button
+                  key={u.id}
+                  type="button"
+                  onClick={() => loginAsMock(u)}
+                  className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition hover:border-clay-400 ${
+                    u.role === "admin"
+                      ? "border-moss-300 bg-moss-500/5"
+                      : "border-sand-200 bg-white"
+                  }`}
+                >
+                  <div>
+                    <div className="font-semibold text-sand-800">
+                      {u.displayName}
+                    </div>
+                    <div className="text-[10px] text-sand-500">{u.email}</div>
+                  </div>
+                  <span
+                    className={`rounded px-2 py-0.5 text-[10px] font-medium ${
+                      u.role === "admin"
+                        ? "bg-moss-500/15 text-moss-700"
+                        : "bg-clay-500/15 text-clay-700"
+                    }`}
+                  >
+                    {u.role === "admin" ? "관리자" : u.partId ?? "원장"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
       <Card className="w-full">
         <CardBody className="space-y-3">

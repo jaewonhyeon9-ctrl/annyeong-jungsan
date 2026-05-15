@@ -24,6 +24,30 @@ export type InflowChannel =
   | "referral" // 지인 소개
   | "other"; // 기타
 
+// 사용자 프로필 — auth.users 를 확장한 정보
+// 법인 admin이 발급/관리. 원장은 본인 정보만 R.
+export type UserRole = "admin" | "owner";
+
+export interface UserProfile {
+  id: string;              // auth user id
+  email: string;
+  role: UserRole;
+  centerId: string | null; // admin은 null (전체), owner는 자기 센터
+  partId: PartId | null;   // admin은 null (전체), owner는 자기 파트
+  displayName: string;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface UserCreateInput {
+  email: string;
+  password: string;
+  role: UserRole;
+  centerId: string | null;
+  partId: PartId | null;
+  displayName: string;
+}
+
 export interface Center {
   id: string;
   name: string;

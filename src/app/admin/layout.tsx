@@ -8,9 +8,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <Link href="/" className="text-sand-600 hover:text-sand-800">
             ←
           </Link>
-          <div className="text-sm font-semibold text-sand-800">법인 정산 대시보드</div>
+          <div className="text-sm font-semibold text-sand-800">법인 영역</div>
           <div className="w-4" />
         </div>
+        <nav className="mx-auto flex max-w-5xl gap-1 px-5 pb-2">
+          <Link
+            href="/admin"
+            className="rounded-lg px-3 py-1.5 text-xs font-medium text-sand-700 hover:bg-sand-100"
+          >
+            정산 대시보드
+          </Link>
+          <Link
+            href="/admin/users"
+            className="rounded-lg px-3 py-1.5 text-xs font-medium text-sand-700 hover:bg-sand-100"
+          >
+            사용자 관리
+          </Link>
+        </nav>
       </header>
       <div className="mx-auto max-w-5xl px-5 py-6">{children}</div>
     </div>

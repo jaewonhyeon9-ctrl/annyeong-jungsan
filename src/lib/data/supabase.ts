@@ -290,6 +290,110 @@ function rowToInflow(r: {
 }
 
 export const supabaseDataSource: DataSource = {
+  me: {
+    async current() {
+      const sb = createClient();
+      const {
+        data: { user },
+      } = await sb.auth.getUser();
+      if (!user) return null;
+      const { data: profile, error } = await sb
+        .from("profiles")
+        .select("id, role, center_id, part_id, display_name, active, created_at")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (error) throw error;
+      if (!profile) return null;
+      return {
+        id: profile.id,
+        email: user.email ?? "",
+        role: profile.role,
+        centerId: profile.center_id,
+        partId: profile.part_id,
+        displayName: profile.display_name,
+        active: profile.active ?? true,
+        createdAt: profile.created_at,
+      };
+    },
+    setMock(_profile) {
+      // no-op in Supabase mode — 실 인증 사용
+    },
+  },
+
+  users: {
+    async list(centerId) {
+      const sb = createClient();
+      let q = sb
+        .from("profiles")
+        .select(
+          "id, role, center_id, part_id, display_name, active, created_at, email"
+        )
+        .order("created_at", { ascending: false });
+      if (centerId) q = q.eq("center_id", centerId);
+      const { data, error } = await q;
+      if (error) throw error;
+      return ((data ?? []) as Array<{
+        id: string;
+        email: string | null;
+        role: "admin" | "owner";
+        center_id: string | null;
+        part_id: PartId | null;
+        display_name: string;
+        active: boolean;
+        created_at: string;
+      }>).map((r) => ({
+        id: r.id,
+        email: r.email ?? "",
+        role: r.role,
+        centerId: r.center_id,
+        partId: r.part_id,
+        displayName: r.display_name,
+        active: r.active,
+        createdAt: r.created_at,
+      }));
+    },
+    async create(_input) {
+      // 신규 사용자 생성은 service_role 권한 필요 — server route 또는 Supabase Dashboard
+      throw new Error(
+        "사용자 생성은 서버 측 admin API 가 필요합니다. Supabase Dashboard → Authentication → Users 에서 직접 추가 후 SQL 로 profiles row 삽입하세요."
+      );
+    },
+    async update(id, patch) {
+      const sb = createClient();
+      const updateRow: Record<string, unknown> = {};
+      if (patch.role !== undefined) updateRow.role = patch.role;
+      if (patch.centerId !== undefined) updateRow.center_id = patch.centerId;
+      if (patch.partId !== undefined) updateRow.part_id = patch.partId;
+      if (patch.displayName !== undefined)
+        updateRow.display_name = patch.displayName;
+      if (patch.active !== undefined) updateRow.active = patch.active;
+      const { data, error } = await sb
+        .from("profiles")
+        .update(updateRow)
+        .eq("id", id)
+        .select(
+          "id, role, center_id, part_id, display_name, active, created_at, email"
+        )
+        .single();
+      if (error) throw error;
+      return {
+        id: data.id,
+        email: data.email ?? "",
+        role: data.role,
+        centerId: data.center_id,
+        partId: data.part_id,
+        displayName: data.display_name,
+        active: data.active,
+        createdAt: data.created_at,
+      };
+    },
+    async resetPassword(_id, _newPassword) {
+      throw new Error(
+        "비번 리셋은 service_role 권한 필요. Supabase Dashboard → Authentication → Users 에서 진행하세요."
+      );
+    },
+  },
+
   centers: {
     async list() {
       const sb = createClient();

@@ -31,14 +31,24 @@ create table public.centers (
   created_at  timestamptz not null default now()
 );
 
--- Supabase auth.users 를 확장한 프로필 (역할/소속 센터)
+-- Supabase auth.users 를 확장한 프로필 (역할/소속 센터/파트)
+-- 원장은 자기 파트만 R/W. 법인 admin은 전체 R.
 create table public.profiles (
-  id          uuid primary key references auth.users(id) on delete cascade,
-  role        user_role not null default 'owner',
-  center_id   uuid references public.centers(id) on delete restrict,
+  id           uuid primary key references auth.users(id) on delete cascade,
+  email        text,                                       -- auth.users.email 미러
+  role         user_role not null default 'owner',
+  center_id    uuid references public.centers(id) on delete restrict,
+  part_id      part_id,                                    -- 원장 파트 (admin은 null)
   display_name text,
-  created_at  timestamptz not null default now()
+  active       boolean not null default true,
+  created_at   timestamptz not null default now()
 );
+
+-- helper: 현재 유저의 part_id
+create or replace function public.current_part_id() returns part_id
+language sql stable as $$
+  select part_id from public.profiles where id = auth.uid()
+$$;
 
 -- ============================================================
 -- 3) 시술 카탈로그 (admin이 수정 가능)
@@ -303,17 +313,29 @@ create policy "entries_owner_write" on public.daily_entries for all using (
 );
 
 -- 자식 테이블 — entry의 권한을 따름
+-- sale_lines: 센터 매칭 + (admin이거나 part_id 매칭)
+-- 원장은 자기 파트 매출만 R/W. admin은 전체.
 create policy "sale_lines_via_entry" on public.sale_lines for all using (
   exists (
     select 1 from public.daily_entries e
     where e.id = sale_lines.entry_id
       and (public.current_role() = 'admin' or e.center_id = public.current_center_id())
   )
+  and (
+    public.current_role() = 'admin'
+    or public.current_part_id() is null
+    or sale_lines.part_id = public.current_part_id()
+  )
 ) with check (
   exists (
     select 1 from public.daily_entries e
     where e.id = sale_lines.entry_id
       and (public.current_role() = 'admin' or e.center_id = public.current_center_id())
+  )
+  and (
+    public.current_role() = 'admin'
+    or public.current_part_id() is null
+    or sale_lines.part_id = public.current_part_id()
   )
 );
 
@@ -408,14 +430,26 @@ create policy "patient_charts_write" on public.patient_charts for all using (
   )
 );
 
--- 방문 — 원장 본인 센터, admin 전체
+-- 방문 — 원장 본인 센터+파트, admin 전체
 create policy "visits_read" on public.visits for select using (
-  public.current_role() = 'admin' or center_id = public.current_center_id()
+  public.current_role() = 'admin'
+  or (
+    center_id = public.current_center_id()
+    and (public.current_part_id() is null or part_id = public.current_part_id())
+  )
 );
 create policy "visits_write" on public.visits for all using (
-  center_id = public.current_center_id() or public.current_role() = 'admin'
+  public.current_role() = 'admin'
+  or (
+    center_id = public.current_center_id()
+    and (public.current_part_id() is null or part_id = public.current_part_id())
+  )
 ) with check (
-  center_id = public.current_center_id() or public.current_role() = 'admin'
+  public.current_role() = 'admin'
+  or (
+    center_id = public.current_center_id()
+    and (public.current_part_id() is null or part_id = public.current_part_id())
+  )
 );
 create policy "visit_sale_lines_via_visit" on public.visit_sale_lines for all using (
   exists (
@@ -423,11 +457,21 @@ create policy "visit_sale_lines_via_visit" on public.visit_sale_lines for all us
     where v.id = visit_sale_lines.visit_id
       and (public.current_role() = 'admin' or v.center_id = public.current_center_id())
   )
+  and (
+    public.current_role() = 'admin'
+    or public.current_part_id() is null
+    or visit_sale_lines.part_id = public.current_part_id()
+  )
 ) with check (
   exists (
     select 1 from public.visits v
     where v.id = visit_sale_lines.visit_id
       and (public.current_role() = 'admin' or v.center_id = public.current_center_id())
+  )
+  and (
+    public.current_role() = 'admin'
+    or public.current_part_id() is null
+    or visit_sale_lines.part_id = public.current_part_id()
   )
 );
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Card, CardBody } from "@/components/ui/Card";
 import { getDataSource } from "@/lib/data";
@@ -10,13 +10,29 @@ import type { PosOcrData, ReceiptOcrData } from "@/lib/ocr/types";
 import { findService, SERVICES, servicesByPart } from "@/lib/services";
 import { PARTS, type PartId } from "@/lib/types";
 import { useCurrentCenter } from "@/lib/use-current-center";
+import { useCurrentProfile } from "@/lib/use-current-profile";
 
 type EntryDraft = Record<string, { cash: number; card: number }>;
 
 export default function OwnerHome() {
   const { centerId, loaded: centerLoaded, error: centerError } = useCurrentCenter();
+  const { profile } = useCurrentProfile();
   const [date, setDate] = useState(todayKST());
+
+  // 사용자의 파트로 자동 좁힘 — 원장은 자기 파트만 표시
+  const visibleParts = useMemo(
+    () =>
+      profile?.role === "owner" && profile.partId
+        ? PARTS.filter((p) => p.id === profile.partId)
+        : PARTS,
+    [profile]
+  );
   const [openPart, setOpenPart] = useState<PartId | null>("scalp");
+  useEffect(() => {
+    if (profile?.role === "owner" && profile.partId) {
+      setOpenPart(profile.partId);
+    }
+  }, [profile]);
   const [draft, setDraft] = useState<EntryDraft>({});
 
   // 카탈로그에 없는 시술 — 직접 추가
@@ -33,7 +49,7 @@ export default function OwnerHome() {
       ...arr,
       {
         tempId: `c-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
-        partId: "scalp",
+        partId: visibleParts[0]?.id ?? "scalp",
         name: "",
         cash: 0,
         card: 0,
@@ -319,9 +335,9 @@ export default function OwnerHome() {
         </div>
       )}
 
-      {/* 파트별 매출 입력 */}
+      {/* 파트별 매출 입력 — 원장 사용자는 자기 파트만 표시 */}
       <div className="space-y-3">
-        {PARTS.map((part) => {
+        {visibleParts.map((part) => {
           const services = servicesByPart(part.id);
           const isOpen = openPart === part.id;
           const partTotal = services.reduce((s, svc) => {
@@ -430,7 +446,7 @@ export default function OwnerHome() {
                   }
                   className="rounded-lg border border-sand-200 bg-white px-2 py-1.5 text-xs"
                 >
-                  {PARTS.map((p) => (
+                  {visibleParts.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.label}
                     </option>

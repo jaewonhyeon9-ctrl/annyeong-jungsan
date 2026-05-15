@@ -7,6 +7,8 @@ import type {
   InflowEntry,
   Patient,
   SettlementRule,
+  UserCreateInput,
+  UserProfile,
   Visit,
 } from "@/lib/types";
 
@@ -42,6 +44,18 @@ export interface DailyEntryCreateInput {
 }
 
 export interface DataSource {
+  // 인증된 사용자 본인의 프로필
+  me: {
+    current(): Promise<UserProfile | null>;
+    setMock(profile: UserProfile | null): void; // mock 모드 전용 — 데모 사용자 전환
+  };
+  // 사용자 관리 (admin 권한)
+  users: {
+    list(centerId?: string): Promise<UserProfile[]>;
+    create(input: UserCreateInput): Promise<UserProfile>;
+    update(id: string, patch: Partial<UserProfile>): Promise<UserProfile>;
+    resetPassword(id: string, newPassword: string): Promise<void>;
+  };
   centers: {
     list(): Promise<Center[]>;
     current(): Promise<Center | null>;

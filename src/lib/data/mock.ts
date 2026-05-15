@@ -9,6 +9,8 @@ import type {
   InflowEntry,
   Patient,
   SettlementRule,
+  UserCreateInput,
+  UserProfile,
   Visit,
 } from "@/lib/types";
 import { DEFAULT_RULE } from "@/lib/types";
@@ -19,6 +21,70 @@ import {
   generateNextPatientId,
 } from "@/lib/patient";
 
+// Mock 사용자 — 시연용
+const MOCK_USERS: UserProfile[] = [
+  {
+    id: "u-admin",
+    email: "admin@annyeong.com",
+    role: "admin",
+    centerId: null,
+    partId: null,
+    displayName: "법인 관리자",
+    active: true,
+    createdAt: "2026-01-01T00:00:00",
+  },
+  {
+    id: "u-scalp",
+    email: "scalp@annyeong.com",
+    role: "owner",
+    centerId: "center-1",
+    partId: "scalp",
+    displayName: "두피 원장",
+    active: true,
+    createdAt: "2026-01-01T00:00:00",
+  },
+  {
+    id: "u-permanent_makeup",
+    email: "pm@annyeong.com",
+    role: "owner",
+    centerId: "center-1",
+    partId: "permanent_makeup",
+    displayName: "반영구 원장",
+    active: true,
+    createdAt: "2026-01-01T00:00:00",
+  },
+  {
+    id: "u-smp",
+    email: "smp@annyeong.com",
+    role: "owner",
+    centerId: "center-1",
+    partId: "smp",
+    displayName: "SMP 원장",
+    active: true,
+    createdAt: "2026-01-01T00:00:00",
+  },
+  {
+    id: "u-pedicure",
+    email: "pedi@annyeong.com",
+    role: "owner",
+    centerId: "center-1",
+    partId: "pedicure",
+    displayName: "패디큐어 원장",
+    active: true,
+    createdAt: "2026-01-01T00:00:00",
+  },
+  {
+    id: "u-skincare",
+    email: "skin@annyeong.com",
+    role: "owner",
+    centerId: "center-1",
+    partId: "skincare",
+    displayName: "피부관리 원장",
+    active: true,
+    createdAt: "2026-01-01T00:00:00",
+  },
+];
+
 // 메모리 store — 데모용. 새로고침하면 mock 시드로 리셋.
 const store = {
   centers: [...MOCK_CENTERS],
@@ -26,13 +92,71 @@ const store = {
   visits: [...MOCK_VISITS],
   entries: [...MOCK_ENTRIES],
   inflows: [...MOCK_INFLOWS],
+  users: [...MOCK_USERS],
 };
+
+// 현재 사용자 — localStorage 에 저장 (mock 모드 데모용)
+const ME_KEY = "mock-current-user-id";
+
+function getCurrentMockUserId(): string {
+  if (typeof window === "undefined") return "u-admin";
+  return localStorage.getItem(ME_KEY) ?? "u-admin";
+}
+
+function setCurrentMockUserId(id: string | null) {
+  if (typeof window === "undefined") return;
+  if (id) localStorage.setItem(ME_KEY, id);
+  else localStorage.removeItem(ME_KEY);
+}
 
 function clone<T>(v: T): T {
   return JSON.parse(JSON.stringify(v));
 }
 
 export const mockDataSource: DataSource = {
+  me: {
+    async current() {
+      const id = getCurrentMockUserId();
+      const found = store.users.find((u) => u.id === id);
+      return found ? clone(found) : null;
+    },
+    setMock(profile) {
+      setCurrentMockUserId(profile?.id ?? null);
+    },
+  },
+
+  users: {
+    async list(centerId) {
+      const filtered = centerId
+        ? store.users.filter((u) => u.centerId === centerId)
+        : store.users;
+      return clone(filtered);
+    },
+    async create(input: UserCreateInput) {
+      const user: UserProfile = {
+        id: `u-${Math.random().toString(36).slice(2, 10)}`,
+        email: input.email,
+        role: input.role,
+        centerId: input.centerId,
+        partId: input.partId,
+        displayName: input.displayName,
+        active: true,
+        createdAt: new Date().toISOString(),
+      };
+      store.users = [user, ...store.users];
+      return clone(user);
+    },
+    async update(id, patch) {
+      const idx = store.users.findIndex((u) => u.id === id);
+      if (idx < 0) throw new Error(`user not found: ${id}`);
+      store.users[idx] = { ...store.users[idx], ...patch };
+      return clone(store.users[idx]);
+    },
+    async resetPassword(_id, _newPassword) {
+      // Mock mode — pretend to reset
+    },
+  },
+
   centers: {
     async list() {
       return clone(store.centers);

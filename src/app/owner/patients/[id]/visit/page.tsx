@@ -8,6 +8,7 @@ import { getDataSource } from "@/lib/data";
 import { fmtWon, todayKST } from "@/lib/format";
 import { findService, servicesByPart } from "@/lib/services";
 import { PARTS, type Patient, type PartId } from "@/lib/types";
+import { useCurrentProfile } from "@/lib/use-current-profile";
 
 // 환자의 새 방문 차트 작성 — 시술/결제 + 진료 메모 + 사진 (옵션)
 
@@ -20,6 +21,15 @@ export default function NewVisitChartPage({
 }) {
   const { id } = use(params);
   const router = useRouter();
+  const { profile } = useCurrentProfile();
+
+  const visibleParts = useMemo(
+    () =>
+      profile?.role === "owner" && profile.partId
+        ? PARTS.filter((p) => p.id === profile.partId)
+        : PARTS,
+    [profile]
+  );
 
   const [patient, setPatient] = useState<Patient | null>(null);
   const [visitNumber, setVisitNumber] = useState(1);
@@ -44,6 +54,9 @@ export default function NewVisitChartPage({
 
   const [visitDate, setVisitDate] = useState(todayKST());
   const [partId, setPartId] = useState<PartId>("scalp");
+  useEffect(() => {
+    if (profile?.role === "owner" && profile.partId) setPartId(profile.partId);
+  }, [profile]);
   const [draft, setDraft] = useState<SaleDraft>({});
   const [memo, setMemo] = useState("");
   const [saving, setSaving] = useState(false);
@@ -179,7 +192,7 @@ export default function NewVisitChartPage({
                 파트
               </div>
               <div className="mt-1.5 grid grid-cols-3 gap-2">
-                {PARTS.map((p) => (
+                {visibleParts.map((p) => (
                   <button
                     key={p.id}
                     type="button"

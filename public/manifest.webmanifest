@@ -1,0 +1,18 @@
+{
+  "name": "안녕메디컬 정산",
+  "short_name": "안녕정산",
+  "description": "안녕메디컬 뷰티센터 매출/정산 관리",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAF7F2",
+  "theme_color": "#A26F54",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
