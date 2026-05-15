@@ -6,7 +6,13 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { getDataSource } from "@/lib/data";
 import { fmtDate } from "@/lib/format";
 import { searchPatients, visitsByPatient } from "@/lib/patient";
-import { INFLOW_CHANNELS, type Patient, type Visit } from "@/lib/types";
+import {
+  INFLOW_CHANNELS,
+  PATIENT_TAGS,
+  type Patient,
+  type PatientTag,
+  type Visit,
+} from "@/lib/types";
 import { useCurrentCenter } from "@/lib/use-current-center";
 
 type LapseFilter = "all" | "30" | "60" | "90";
@@ -20,6 +26,7 @@ export default function PatientsPage() {
   const { centerId, loaded: centerLoaded, error: centerError } = useCurrentCenter();
   const [q, setQ] = useState("");
   const [lapse, setLapse] = useState<LapseFilter>("all");
+  const [tagFilter, setTagFilter] = useState<PatientTag | "all">("all");
   const [patients, setPatients] = useState<Patient[]>([]);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -49,18 +56,22 @@ export default function PatientsPage() {
     };
   }, [centerId, centerLoaded]);
 
-  // 검색 → 미내방 필터 적용
+  // 검색 → 미내방 → 태그 필터 적용
   const list = useMemo(() => {
-    const searched = searchPatients(patients, q);
-    if (lapse === "all") return searched;
-    const threshold = parseInt(lapse, 10);
-    return searched.filter((p) => {
-      const lastVisit = visitsByPatient(visits, p.id)[0];
-      // 방문 없는 환자: 첫 방문일 기준으로 판정
-      const baseline = lastVisit?.visitDate ?? p.firstVisitDate;
-      return daysSince(baseline) >= threshold;
-    });
-  }, [patients, visits, q, lapse]);
+    let result = searchPatients(patients, q);
+    if (lapse !== "all") {
+      const threshold = parseInt(lapse, 10);
+      result = result.filter((p) => {
+        const lastVisit = visitsByPatient(visits, p.id)[0];
+        const baseline = lastVisit?.visitDate ?? p.firstVisitDate;
+        return daysSince(baseline) >= threshold;
+      });
+    }
+    if (tagFilter !== "all") {
+      result = result.filter((p) => p.tags?.includes(tagFilter));
+    }
+    return result;
+  }, [patients, visits, q, lapse, tagFilter]);
 
   // 미내방 카운트 — 탭 라벨용
   const lapseCounts = useMemo(() => {
@@ -133,6 +144,39 @@ export default function PatientsPage() {
           ))}
         </div>
 
+        {/* 태그 필터 */}
+        <div className="flex gap-1.5 overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => setTagFilter("all")}
+            className={`flex-shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+              tagFilter === "all"
+                ? "border-sand-700 bg-sand-700 text-white"
+                : "border-sand-200 bg-white text-sand-700"
+            }`}
+          >
+            태그 전체
+          </button>
+          {PATIENT_TAGS.map((tag) => {
+            const on = tagFilter === tag.id;
+            return (
+              <button
+                key={tag.id}
+                type="button"
+                onClick={() => setTagFilter(on ? "all" : tag.id)}
+                className="flex-shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition"
+                style={{
+                  borderColor: on ? tag.color : "#E8DDC8",
+                  background: on ? tag.color : "#FFFFFF",
+                  color: on ? "#FFFFFF" : "#6E5C42",
+                }}
+              >
+                {tag.label}
+              </button>
+            );
+          })}
+        </div>
+
         <div className="space-y-2">
           {!loaded ? (
             <Card>
@@ -178,6 +222,19 @@ export default function PatientsPage() {
                         {p.personal?.name ?? "(이름 미입력)"}
                       </div>
                       <div className="mt-1 flex flex-wrap gap-1">
+                        {p.tags?.map((t) => {
+                          const tag = PATIENT_TAGS.find((x) => x.id === t);
+                          if (!tag) return null;
+                          return (
+                            <span
+                              key={t}
+                              className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
+                              style={{ backgroundColor: tag.color }}
+                            >
+                              {tag.label}
+                            </span>
+                          );
+                        })}
                         {p.inflowChannels.map((c) => (
                           <span
                             key={c}

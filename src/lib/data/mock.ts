@@ -87,8 +87,30 @@ const MOCK_USERS: UserProfile[] = [
   },
 ];
 
-// 메모리 store — 데모용. 새로고침하면 mock 시드로 리셋.
-const store = {
+type MockStore = {
+  centers: Center[];
+  patients: Patient[];
+  visits: Visit[];
+  entries: DailyEntry[];
+  inflows: InflowEntry[];
+  users: UserProfile[];
+};
+
+const STORE_KEY = "annyeong-local-store-v1";
+
+function seedStore(): MockStore {
+  return {
+    centers: clone(MOCK_CENTERS),
+    patients: clone(MOCK_PATIENTS),
+    visits: clone(MOCK_VISITS),
+    entries: clone(MOCK_ENTRIES),
+    inflows: clone(MOCK_INFLOWS),
+    users: clone(MOCK_USERS),
+  };
+}
+
+// 메모리 store + 브라우저 localStorage 영속화.
+let store: MockStore = {
   centers: [...MOCK_CENTERS],
   patients: [...MOCK_PATIENTS],
   visits: [...MOCK_VISITS],
@@ -96,6 +118,7 @@ const store = {
   inflows: [...MOCK_INFLOWS],
   users: [...MOCK_USERS],
 };
+let hydrated = false;
 
 // 현재 사용자 — localStorage 에 저장 (mock 모드 데모용)
 const ME_KEY = "mock-current-user-id";
@@ -115,12 +138,57 @@ function clone<T>(v: T): T {
   return JSON.parse(JSON.stringify(v));
 }
 
+function hydrateStore() {
+  if (hydrated || typeof window === "undefined") return;
+  hydrated = true;
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) {
+      store = seedStore();
+      persistStore();
+      return;
+    }
+    const parsed = JSON.parse(raw) as Partial<MockStore>;
+    const seeded = seedStore();
+    store = {
+      centers: parsed.centers ?? seeded.centers,
+      patients: parsed.patients ?? seeded.patients,
+      visits: parsed.visits ?? seeded.visits,
+      entries: parsed.entries ?? seeded.entries,
+      inflows: parsed.inflows ?? seeded.inflows,
+      users: parsed.users ?? seeded.users,
+    };
+  } catch {
+    store = seedStore();
+  }
+}
+
+function persistStore() {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(store));
+  } catch {
+    // Storage can be unavailable in private modes. In-memory still works.
+  }
+}
+
+function readStore() {
+  hydrateStore();
+  return store;
+}
+
+function commit(mutator: (s: MockStore) => void) {
+  hydrateStore();
+  mutator(store);
+  persistStore();
+}
+
 export const mockDataSource: DataSource = {
   me: {
     async current() {
       const id = getCurrentMockUserId();
       if (!id) return null;
-      const found = store.users.find((u) => u.id === id);
+      const found = readStore().users.find((u) => u.id === id);
       return found ? clone(found) : null;
     },
     setMock(profile) {
@@ -133,6 +201,7 @@ export const mockDataSource: DataSource = {
 
   users: {
     async list(centerId) {
+      const store = readStore();
       const filtered = centerId
         ? store.users.filter((u) => u.centerId === centerId)
         : store.users;
@@ -154,14 +223,20 @@ export const mockDataSource: DataSource = {
         memo: input.memo,
         createdAt: new Date().toISOString(),
       };
-      store.users = [user, ...store.users];
+      commit((store) => {
+        store.users = [user, ...store.users];
+      });
       return clone(user);
     },
     async update(id, patch) {
+      const store = readStore();
       const idx = store.users.findIndex((u) => u.id === id);
       if (idx < 0) throw new Error(`user not found: ${id}`);
-      store.users[idx] = { ...store.users[idx], ...patch };
-      return clone(store.users[idx]);
+      const updated = { ...store.users[idx], ...patch };
+      commit((store) => {
+        store.users[idx] = updated;
+      });
+      return clone(updated);
     },
     async resetPassword(_id, _newPassword) {
       // Mock mode — pretend to reset
@@ -170,10 +245,10 @@ export const mockDataSource: DataSource = {
 
   centers: {
     async list() {
-      return clone(store.centers);
+      return clone(readStore().centers);
     },
     async current() {
-      return clone(store.centers[0] ?? null);
+      return clone(readStore().centers[0] ?? null);
     },
     async create(input: CenterCreateInput) {
       const center: Center = {
@@ -184,29 +259,37 @@ export const mockDataSource: DataSource = {
         phone: input.phone,
         createdAt: new Date().toISOString(),
       };
-      store.centers = [...store.centers, center];
+      commit((store) => {
+        store.centers = [...store.centers, center];
+      });
       return clone(center);
     },
     async update(id, patch) {
+      const store = readStore();
       const idx = store.centers.findIndex((c) => c.id === id);
       if (idx < 0) throw new Error(`center not found: ${id}`);
-      store.centers[idx] = { ...store.centers[idx], ...patch };
-      return clone(store.centers[idx]);
+      const updated = { ...store.centers[idx], ...patch };
+      commit((store) => {
+        store.centers[idx] = updated;
+      });
+      return clone(updated);
     },
   },
 
   patients: {
     async list(centerId) {
+      const store = readStore();
       const filtered = centerId
         ? store.patients.filter((p) => p.centerId === centerId)
         : store.patients;
       return clone(filtered);
     },
     async get(id) {
-      const found = store.patients.find((p) => p.id === id);
+      const found = readStore().patients.find((p) => p.id === id);
       return found ? clone(found) : null;
     },
     async create(input: PatientCreateInput) {
+      const store = readStore();
       const month = input.firstVisitDate.slice(0, 7);
       const id = input.id ?? generateNextPatientId(store.patients, 1, month);
       const now = new Date().toISOString();
@@ -227,10 +310,13 @@ export const mockDataSource: DataSource = {
         createdAt: now,
         updatedAt: now,
       };
-      store.patients = [patient, ...store.patients];
+      commit((store) => {
+        store.patients = [patient, ...store.patients];
+      });
       return clone(patient);
     },
     async update(id, patch) {
+      const store = readStore();
       const idx = store.patients.findIndex((p) => p.id === id);
       if (idx < 0) throw new Error(`patient not found: ${id}`);
       const updated = {
@@ -238,13 +324,16 @@ export const mockDataSource: DataSource = {
         ...patch,
         updatedAt: new Date().toISOString(),
       };
-      store.patients[idx] = updated;
+      commit((store) => {
+        store.patients[idx] = updated;
+      });
       return clone(updated);
     },
   },
 
   visits: {
     async listByPatient(patientId) {
+      const store = readStore();
       return clone(
         store.visits
           .filter((v) => v.patientId === patientId)
@@ -264,13 +353,16 @@ export const mockDataSource: DataSource = {
         visitMemo: input.visitMemo,
         createdAt: new Date().toISOString(),
       };
-      store.visits = [visit, ...store.visits];
+      commit((store) => {
+        store.visits = [visit, ...store.visits];
+      });
       return clone(visit);
     },
   },
 
   entries: {
     async byMonth(centerId, yearMonth) {
+      const store = readStore();
       const manual = store.entries.filter(
         (e) => e.centerId === centerId && e.date.startsWith(yearMonth)
       );
@@ -315,24 +407,29 @@ export const mockDataSource: DataSource = {
         ocrSource: input.ocrSource,
         createdAt: new Date().toISOString(),
       };
-      store.entries = [entry, ...store.entries];
+      commit((store) => {
+        store.entries = [entry, ...store.entries];
+      });
       return clone(entry);
     },
   },
 
   inflows: {
     async byMonth(centerId, month) {
-      const found = store.inflows.find(
+      const found = readStore().inflows.find(
         (i) => i.centerId === centerId && i.month === month
       );
       return found ? clone(found) : null;
     },
     async upsert(entry: InflowEntry) {
+      const store = readStore();
       const idx = store.inflows.findIndex(
         (i) => i.centerId === entry.centerId && i.month === entry.month
       );
-      if (idx >= 0) store.inflows[idx] = clone(entry);
-      else store.inflows = [...store.inflows, clone(entry)];
+      commit((store) => {
+        if (idx >= 0) store.inflows[idx] = clone(entry);
+        else store.inflows = [...store.inflows, clone(entry)];
+      });
       return clone(entry);
     },
   },

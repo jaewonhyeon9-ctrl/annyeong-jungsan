@@ -126,6 +126,16 @@ export interface ProductConsumption {
   quantity: number;
 }
 
+// 환자 태그 — 원장이 환자에 붙이는 라벨
+export type PatientTag = "vip" | "careful" | "longterm" | "newcomer" | "noshow";
+export const PATIENT_TAGS: { id: PatientTag; label: string; color: string }[] = [
+  { id: "vip", label: "VIP", color: "#A26F54" },
+  { id: "careful", label: "주의", color: "#C28B6E" },
+  { id: "longterm", label: "장기관리", color: "#71875E" },
+  { id: "newcomer", label: "신규", color: "#8FA37A" },
+  { id: "noshow", label: "노쇼이력", color: "#A8916A" },
+];
+
 // 환자 — 의료법 안전 모드: 정산 DB에는 환자번호만, 의료정보/개인정보는
 // 센터(원장) 권한 영역에 별도 격리. 법인 admin은 정산 데이터만 볼 수 있음.
 export type ChartCondition = "toenail_fungus" | "ingrown_nail" | "callus";
@@ -149,6 +159,7 @@ export interface Patient {
   firstVisitDate: string; // YYYY-MM-DD
   inflowChannels: InflowChannel[]; // 차트의 방문경로 (다중 선택 가능)
   consent: boolean;       // 개인정보 동의
+  tags?: PatientTag[];    // 원장이 붙인 라벨 (VIP, 주의 등)
 
   // 개인정보 — 원장만 접근. DB 저장 정책은 센터 책임 영역.
   // 정산 DB와는 분리된 테이블/스토리지에 보관.

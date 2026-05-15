@@ -6,7 +6,7 @@
 
 ## 한 줄 상태
 
-**Phase 1~3 완전 동작 + 실제 데이터 wiring 완료.** 환자 등록/방문/매출/유입이 mock store에 저장되고 정산 대시보드에 즉시 반영. 외부 키 채우면 Supabase로 자동 전환. Vercel 배포 가이드까지 준비됨.
+**Vercel 빌드 완료 + Supabase 없는 라이트 버전으로 방향 전환.** 환자 등록/방문/매출/유입은 mock data source에 저장되고, 브라우저 localStorage에 유지됨. Supabase 자동 전환은 비활성화.
 
 ---
 
@@ -17,7 +17,7 @@
 - 환자/방문/유입 전체 페이지 (mock)
 - OCR API + 카메라 wiring
 - Auth + 미들웨어
-- Supabase 데이터 레이어 (한 인터페이스, mock↔실DB 자동전환)
+- Supabase 데이터 레이어 골격 추가 후, 현재 운영 모드에서는 비활성화
 - 엑셀 내보내기 3시트
 - PWA 매니페스트
 - 시각화 (BarChart, DonutChart)
@@ -149,8 +149,8 @@ VS Code: `code D:\annyeong-jungsan`
 | OCR 클라이언트 | [src/lib/ocr/client.ts](src/lib/ocr/client.ts) |
 | 데이터 레이어 (인터페이스) | [src/lib/data/source.ts](src/lib/data/source.ts) |
 | 데이터 레이어 (mock) | [src/lib/data/mock.ts](src/lib/data/mock.ts) |
-| 데이터 레이어 (Supabase) | [src/lib/data/supabase.ts](src/lib/data/supabase.ts) |
-| 자동 전환 | [src/lib/data/index.ts](src/lib/data/index.ts) |
+| 데이터 레이어 (Supabase 초안, 비활성) | [src/lib/data/supabase.ts](src/lib/data/supabase.ts) |
+| 데이터 모드 고정 | [src/lib/data/index.ts](src/lib/data/index.ts) |
 | Supabase 클라이언트 | [src/lib/supabase/](src/lib/supabase/) |
 | DB 스키마 | [supabase/schema.sql](supabase/schema.sql) |
 | 미들웨어 | [src/middleware.ts](src/middleware.ts) |

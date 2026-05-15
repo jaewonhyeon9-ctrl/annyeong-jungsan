@@ -5,7 +5,14 @@ import { use, useEffect, useState } from "react";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { getDataSource } from "@/lib/data";
 import { fmtDate, fmtWon } from "@/lib/format";
-import { INFLOW_CHANNELS, PARTS, type Patient, type Visit } from "@/lib/types";
+import {
+  INFLOW_CHANNELS,
+  PARTS,
+  PATIENT_TAGS,
+  type Patient,
+  type PatientTag,
+  type Visit,
+} from "@/lib/types";
 
 export default function PatientDetailPage({
   params,
@@ -16,6 +23,21 @@ export default function PatientDetailPage({
   const [patient, setPatient] = useState<Patient | null>(null);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [loaded, setLoaded] = useState(false);
+
+  async function handleToggleTag(tag: PatientTag) {
+    if (!patient) return;
+    const current = patient.tags ?? [];
+    const next = current.includes(tag)
+      ? current.filter((t) => t !== tag)
+      : [...current, tag];
+    try {
+      const data = await getDataSource();
+      const updated = await data.patients.update(patient.id, { tags: next });
+      setPatient(updated);
+    } catch (err) {
+      alert(`태그 저장 실패: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -102,7 +124,40 @@ export default function PatientDetailPage({
                   {channelLabel(c)}
                 </span>
               ))}
+              {patient.tags?.map((t) => {
+                const tag = PATIENT_TAGS.find((x) => x.id === t);
+                if (!tag) return null;
+                return (
+                  <span
+                    key={t}
+                    className="rounded-full px-2 py-0.5 text-[11px] font-medium text-white"
+                    style={{ backgroundColor: tag.color }}
+                  >
+                    {tag.label}
+                  </span>
+                );
+              })}
             </div>
+
+            {/* 빠른 액션 — 전화/SMS (모바일에서 작동) */}
+            {patient.personal?.phone && (
+              <div className="mt-3 flex gap-2 border-t border-sand-200 pt-3">
+                <a
+                  href={`tel:${patient.personal.phone}`}
+                  className="flex-1 rounded-lg bg-moss-500 px-3 py-2 text-center text-xs font-medium text-white hover:bg-moss-600"
+                >
+                  📞 전화
+                </a>
+                <a
+                  href={`sms:${patient.personal.phone}?body=${encodeURIComponent(
+                    `${patient.personal.name ?? "고객"}님 안녕하세요.\n안녕메디컬입니다.\n\n`
+                  )}`}
+                  className="flex-1 rounded-lg bg-clay-500 px-3 py-2 text-center text-xs font-medium text-white hover:bg-clay-600"
+                >
+                  💬 문자
+                </a>
+              </div>
+            )}
             <div className="mt-3 grid grid-cols-2 gap-3 border-t border-sand-200 pt-3 text-xs">
               <div>
                 <div className="uppercase text-sand-500">최초 방문</div>
@@ -182,6 +237,38 @@ export default function PatientDetailPage({
             </div>
           );
         })()}
+
+        {/* 환자 태그 */}
+        <Card>
+          <CardHeader>
+            <CardTitle>태그</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <div className="flex flex-wrap gap-2">
+              {PATIENT_TAGS.map((tag) => {
+                const on = patient.tags?.includes(tag.id) ?? false;
+                return (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    onClick={() => handleToggleTag(tag.id)}
+                    className="rounded-full border px-3 py-1.5 text-xs font-medium transition"
+                    style={{
+                      borderColor: on ? tag.color : "#E8DDC8",
+                      background: on ? tag.color : "#FFFFFF",
+                      color: on ? "#FFFFFF" : "#6E5C42",
+                    }}
+                  >
+                    {tag.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-[10px] text-sand-500">
+              VIP / 주의 / 장기관리 등 환자별 라벨. 목록에서 필터 가능.
+            </p>
+          </CardBody>
+        </Card>
 
         {/* CRM — 카톡 메시지 템플릿 */}
         <MessageTemplates patient={patient} />

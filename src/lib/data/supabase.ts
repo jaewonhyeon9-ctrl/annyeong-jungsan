@@ -1,5 +1,6 @@
-// Supabase 구현 — Phase 2에서 본격 사용
-// .env.local에 NEXT_PUBLIC_SUPABASE_URL 이 설정되면 자동으로 활성화됨
+// Supabase 구현 초안.
+// 현재 운영 모드에서는 src/lib/data/index.ts 가 mockDataSource로 고정되어
+// 이 파일은 자동으로 사용되지 않는다.
 //
 // 타입 주의: database.types.ts 는 최소 골격만 있음. 실제 Supabase 셋업 후
 // `npx supabase gen types typescript --project-id ...` 로 자동생성 권장.
