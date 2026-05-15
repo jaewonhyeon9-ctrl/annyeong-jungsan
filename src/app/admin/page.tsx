@@ -456,6 +456,44 @@ export default function AdminDashboard() {
                 />
               </label>
             </div>
+
+            {/* 면세 파트 토글 */}
+            <div className="mt-4 border-t border-sand-200 pt-3">
+              <div className="text-xs font-medium text-sand-700">
+                면세 파트 (의료행위로 부가세 없음)
+              </div>
+              <div className="mt-2 grid grid-cols-3 gap-2 md:grid-cols-5">
+                {PARTS.map((p) => {
+                  const exempt = rule.vatExemptParts.includes(p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        const next = exempt
+                          ? rule.vatExemptParts.filter((x) => x !== p.id)
+                          : [...rule.vatExemptParts, p.id];
+                        updateRule({ ...rule, vatExemptParts: next });
+                      }}
+                      className={`rounded-lg border px-3 py-2 text-xs font-medium transition ${
+                        exempt
+                          ? "border-moss-500 bg-moss-500/10 text-moss-700"
+                          : "border-sand-200 bg-white text-sand-700 hover:border-sand-300"
+                      }`}
+                    >
+                      {p.label}
+                      <div className="text-[10px] font-normal">
+                        {exempt ? "면세" : "과세"}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-[10px] text-sand-500">
+                의료행위 (의료법상 면세)면 면세로, 비의료 미용이면 과세로 설정.
+                면세 파트는 부가세 차감에서 제외됩니다.
+              </p>
+            </div>
           </details>
         </CardBody>
       </Card>
