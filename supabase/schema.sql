@@ -24,11 +24,14 @@ create type inflow_channel as enum (
 -- 2) 센터 / 사용자
 -- ============================================================
 create table public.centers (
-  id          uuid primary key default gen_random_uuid(),
-  name        text not null,
-  owner_name  text,
-  active      boolean not null default true,
-  created_at  timestamptz not null default now()
+  id            uuid primary key default gen_random_uuid(),
+  name          text not null,
+  enabled_parts part_id[] not null default '{}',
+  address       text,
+  phone         text,
+  owner_name    text,                                  -- legacy
+  active        boolean not null default true,
+  created_at    timestamptz not null default now()
 );
 
 -- Supabase auth.users 를 확장한 프로필 (역할/소속 센터/파트)

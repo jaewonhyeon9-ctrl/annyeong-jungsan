@@ -33,6 +33,13 @@ export interface VisitCreateInput {
   visitMemo?: string;
 }
 
+export interface CenterCreateInput {
+  name: string;
+  enabledParts: import("@/lib/types").PartId[];
+  address?: string;
+  phone?: string;
+}
+
 export interface DailyEntryCreateInput {
   centerId: string;
   date: string;
@@ -59,6 +66,8 @@ export interface DataSource {
   centers: {
     list(): Promise<Center[]>;
     current(): Promise<Center | null>;
+    create(input: CenterCreateInput): Promise<Center>;
+    update(id: string, patch: Partial<Center>): Promise<Center>;
   };
   patients: {
     list(centerId?: string): Promise<Patient[]>;

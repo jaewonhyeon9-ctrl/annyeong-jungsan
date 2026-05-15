@@ -8,6 +8,9 @@ export const MOCK_CENTERS: Center[] = [
   {
     id: "center-1",
     name: "안녕메디컬 본점",
+    enabledParts: ["scalp", "permanent_makeup", "smp", "pedicure", "skincare"],
+    address: "서울 강남구",
+    phone: "02-0000-0000",
     ownerName: "원장 김OO",
     createdAt: "2025-01-01",
   },

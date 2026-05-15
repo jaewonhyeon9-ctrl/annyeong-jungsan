@@ -10,6 +10,7 @@ import { createClient as createSb } from "@/lib/supabase/client";
 const createClient = (): any => createSb();
 
 import type {
+  CenterCreateInput,
   DailyEntryCreateInput,
   DataSource,
   PatientCreateInput,
@@ -39,11 +40,17 @@ function rowToCenter(r: {
   id: string;
   name: string;
   owner_name: string | null;
+  enabled_parts?: PartId[] | null;
+  address?: string | null;
+  phone?: string | null;
   created_at: string;
 }): Center {
   return {
     id: r.id,
     name: r.name,
+    enabledParts: r.enabled_parts ?? [],
+    address: r.address ?? undefined,
+    phone: r.phone ?? undefined,
     ownerName: r.owner_name ?? undefined,
     createdAt: r.created_at,
   };
@@ -399,7 +406,7 @@ export const supabaseDataSource: DataSource = {
       const sb = createClient();
       const { data, error } = await sb
         .from("centers")
-        .select("id, name, owner_name, created_at")
+        .select("id, name, owner_name, enabled_parts, address, phone, created_at")
         .order("created_at");
       if (error) throw error;
       return (data ?? []).map(rowToCenter);
@@ -410,11 +417,43 @@ export const supabaseDataSource: DataSource = {
       if (!id) return null;
       const { data: center, error } = await sb
         .from("centers")
-        .select("id, name, owner_name, created_at")
+        .select("id, name, owner_name, enabled_parts, address, phone, created_at")
         .eq("id", id)
         .maybeSingle();
       if (error) throw error;
       return center ? rowToCenter(center) : null;
+    },
+    async create(input: CenterCreateInput) {
+      const sb = createClient();
+      const { data, error } = await sb
+        .from("centers")
+        .insert({
+          name: input.name,
+          enabled_parts: input.enabledParts,
+          address: input.address ?? null,
+          phone: input.phone ?? null,
+        })
+        .select("id, name, owner_name, enabled_parts, address, phone, created_at")
+        .single();
+      if (error) throw error;
+      return rowToCenter(data);
+    },
+    async update(id, patch) {
+      const sb = createClient();
+      const update: Record<string, unknown> = {};
+      if (patch.name !== undefined) update.name = patch.name;
+      if (patch.enabledParts !== undefined)
+        update.enabled_parts = patch.enabledParts;
+      if (patch.address !== undefined) update.address = patch.address;
+      if (patch.phone !== undefined) update.phone = patch.phone;
+      const { data, error } = await sb
+        .from("centers")
+        .update(update)
+        .eq("id", id)
+        .select("id, name, owner_name, enabled_parts, address, phone, created_at")
+        .single();
+      if (error) throw error;
+      return rowToCenter(data);
     },
   },
 

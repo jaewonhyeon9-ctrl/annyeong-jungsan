@@ -1,10 +1,12 @@
 import type {
+  CenterCreateInput,
   DailyEntryCreateInput,
   DataSource,
   PatientCreateInput,
   VisitCreateInput,
 } from "./source";
 import type {
+  Center,
   DailyEntry,
   InflowEntry,
   Patient,
@@ -98,9 +100,9 @@ const store = {
 // 현재 사용자 — localStorage 에 저장 (mock 모드 데모용)
 const ME_KEY = "mock-current-user-id";
 
-function getCurrentMockUserId(): string {
-  if (typeof window === "undefined") return "u-admin";
-  return localStorage.getItem(ME_KEY) ?? "u-admin";
+function getCurrentMockUserId(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(ME_KEY);
 }
 
 function setCurrentMockUserId(id: string | null) {
@@ -117,6 +119,7 @@ export const mockDataSource: DataSource = {
   me: {
     async current() {
       const id = getCurrentMockUserId();
+      if (!id) return null;
       const found = store.users.find((u) => u.id === id);
       return found ? clone(found) : null;
     },
@@ -163,6 +166,24 @@ export const mockDataSource: DataSource = {
     },
     async current() {
       return clone(store.centers[0] ?? null);
+    },
+    async create(input: CenterCreateInput) {
+      const center: Center = {
+        id: `center-${Math.random().toString(36).slice(2, 8)}`,
+        name: input.name,
+        enabledParts: input.enabledParts,
+        address: input.address,
+        phone: input.phone,
+        createdAt: new Date().toISOString(),
+      };
+      store.centers = [...store.centers, center];
+      return clone(center);
+    },
+    async update(id, patch) {
+      const idx = store.centers.findIndex((c) => c.id === id);
+      if (idx < 0) throw new Error(`center not found: ${id}`);
+      store.centers[idx] = { ...store.centers[idx], ...patch };
+      return clone(store.centers[idx]);
     },
   },
 

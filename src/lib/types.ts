@@ -51,7 +51,10 @@ export interface UserCreateInput {
 export interface Center {
   id: string;
   name: string;
-  ownerName?: string; // 원장 이름
+  enabledParts: PartId[]; // 이 지점에서 운영하는 파트들 (admin이 설정)
+  address?: string;
+  phone?: string;
+  ownerName?: string; // 원장 이름 — legacy
   createdAt: string;
 }
 

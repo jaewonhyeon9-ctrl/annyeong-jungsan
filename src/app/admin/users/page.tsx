@@ -190,22 +190,29 @@ export default function AdminUsersPage() {
             </Field>
             {newForm.role === "owner" && (
               <>
-                <Field label="센터">
+                <Field label="지점 (병원)">
                   <select
                     value={newForm.centerId}
                     onChange={(e) =>
-                      setNewForm({ ...newForm, centerId: e.target.value })
+                      setNewForm({
+                        ...newForm,
+                        centerId: e.target.value,
+                        partId: "", // 지점 바뀌면 파트 리셋
+                      })
                     }
                     className="w-full rounded-lg border border-sand-200 bg-white px-3 py-2 text-sm"
                   >
+                    {centers.length === 0 && (
+                      <option value="">지점 없음 — 먼저 지점 등록 필요</option>
+                    )}
                     {centers.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.name}
+                        {c.name} ({c.enabledParts.length}개 파트)
                       </option>
                     ))}
                   </select>
                 </Field>
-                <Field label="파트">
+                <Field label="파트 (이 지점에서 운영하는 파트만)">
                   <select
                     value={newForm.partId}
                     onChange={(e) =>
@@ -215,13 +222,22 @@ export default function AdminUsersPage() {
                       })
                     }
                     className="w-full rounded-lg border border-sand-200 bg-white px-3 py-2 text-sm"
+                    disabled={!newForm.centerId}
                   >
                     <option value="">파트 선택</option>
-                    {PARTS.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.label}
-                      </option>
-                    ))}
+                    {(() => {
+                      const selected = centers.find(
+                        (c) => c.id === newForm.centerId
+                      );
+                      const enabled = selected?.enabledParts ?? [];
+                      return PARTS.filter((p) => enabled.includes(p.id)).map(
+                        (p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.label}
+                          </option>
+                        )
+                      );
+                    })()}
                   </select>
                 </Field>
               </>
