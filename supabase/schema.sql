@@ -34,17 +34,25 @@ create table public.centers (
   created_at    timestamptz not null default now()
 );
 
--- Supabase auth.users 를 확장한 프로필 (역할/소속 센터/파트)
--- 원장은 자기 파트만 R/W. 법인 admin은 전체 R.
+-- Supabase auth.users 를 확장한 프로필 (역할/소속 센터/파트 + 원장 정보)
+-- 원장은 자기 파트만 R/W. 법인 admin은 전체 R/W (개인정보는 본인+admin).
 create table public.profiles (
-  id           uuid primary key references auth.users(id) on delete cascade,
-  email        text,                                       -- auth.users.email 미러
-  role         user_role not null default 'owner',
-  center_id    uuid references public.centers(id) on delete restrict,
-  part_id      part_id,                                    -- 원장 파트 (admin은 null)
-  display_name text,
-  active       boolean not null default true,
-  created_at   timestamptz not null default now()
+  id              uuid primary key references auth.users(id) on delete cascade,
+  email           text,                                       -- auth.users.email 미러
+  role            user_role not null default 'owner',
+  center_id       uuid references public.centers(id) on delete restrict,
+  part_id         part_id,                                    -- 원장 파트 (admin은 null)
+  display_name    text,
+  active          boolean not null default true,
+  -- 원장 부가 정보 — /owner/profile 에서 본인이 입력
+  phone           text,
+  bank_name       text,
+  bank_account    text,
+  bank_holder     text,
+  business_number text,
+  contract_start_date date,
+  memo            text,
+  created_at      timestamptz not null default now()
 );
 
 -- helper: 현재 유저의 part_id

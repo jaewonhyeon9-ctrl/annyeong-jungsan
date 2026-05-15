@@ -8,7 +8,7 @@ import { fmtDate, fmtWon, todayKST } from "@/lib/format";
 import { ocrFromFile } from "@/lib/ocr/client";
 import type { PosOcrData, ReceiptOcrData } from "@/lib/ocr/types";
 import { findService, SERVICES, servicesByPart } from "@/lib/services";
-import { PARTS, type PartId } from "@/lib/types";
+import { isProfileComplete, PARTS, type PartId } from "@/lib/types";
 import { useCurrentCenter } from "@/lib/use-current-center";
 import { useCurrentProfile } from "@/lib/use-current-profile";
 
@@ -234,8 +234,23 @@ export default function OwnerHome() {
     }
   }
 
+  const needsProfileCompletion = profile && !isProfileComplete(profile);
+
   return (
     <div className="space-y-5">
+      {/* 프로필 미완성 알림 */}
+      {needsProfileCompletion && (
+        <Link
+          href="/owner/profile"
+          className="block rounded-2xl border-2 border-clay-400 bg-clay-500/10 px-4 py-3 text-sm text-clay-800 hover:bg-clay-500/15"
+        >
+          <div className="font-semibold">⚠️ 내 정보가 비어있어요</div>
+          <div className="mt-0.5 text-xs">
+            연락처/정산 계좌 입력해주세요 — 정산 입금에 필요해요. 클릭 →
+          </div>
+        </Link>
+      )}
+
       {/* 날짜 + 합계 */}
       <Card>
         <CardBody>

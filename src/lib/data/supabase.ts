@@ -306,7 +306,9 @@ export const supabaseDataSource: DataSource = {
       if (!user) return null;
       const { data: profile, error } = await sb
         .from("profiles")
-        .select("id, role, center_id, part_id, display_name, active, created_at")
+        .select(
+          "id, role, center_id, part_id, display_name, active, created_at, phone, bank_name, bank_account, bank_holder, business_number, contract_start_date, memo"
+        )
         .eq("id", user.id)
         .maybeSingle();
       if (error) throw error;
@@ -320,6 +322,18 @@ export const supabaseDataSource: DataSource = {
         displayName: profile.display_name,
         active: profile.active ?? true,
         createdAt: profile.created_at,
+        phone: profile.phone ?? undefined,
+        bankAccount:
+          profile.bank_name || profile.bank_account
+            ? {
+                bank: profile.bank_name ?? "",
+                accountNumber: profile.bank_account ?? "",
+                holder: profile.bank_holder ?? "",
+              }
+            : undefined,
+        businessNumber: profile.business_number ?? undefined,
+        contractStartDate: profile.contract_start_date ?? undefined,
+        memo: profile.memo ?? undefined,
       };
     },
     setMock(_profile) {
@@ -333,7 +347,7 @@ export const supabaseDataSource: DataSource = {
       let q = sb
         .from("profiles")
         .select(
-          "id, role, center_id, part_id, display_name, active, created_at, email"
+          "id, role, center_id, part_id, display_name, active, created_at, email, phone, bank_name, bank_account, bank_holder, business_number, contract_start_date, memo"
         )
         .order("created_at", { ascending: false });
       if (centerId) q = q.eq("center_id", centerId);
@@ -348,6 +362,13 @@ export const supabaseDataSource: DataSource = {
         display_name: string;
         active: boolean;
         created_at: string;
+        phone: string | null;
+        bank_name: string | null;
+        bank_account: string | null;
+        bank_holder: string | null;
+        business_number: string | null;
+        contract_start_date: string | null;
+        memo: string | null;
       }>).map((r) => ({
         id: r.id,
         email: r.email ?? "",
@@ -357,6 +378,18 @@ export const supabaseDataSource: DataSource = {
         displayName: r.display_name,
         active: r.active,
         createdAt: r.created_at,
+        phone: r.phone ?? undefined,
+        bankAccount:
+          r.bank_name || r.bank_account
+            ? {
+                bank: r.bank_name ?? "",
+                accountNumber: r.bank_account ?? "",
+                holder: r.bank_holder ?? "",
+              }
+            : undefined,
+        businessNumber: r.business_number ?? undefined,
+        contractStartDate: r.contract_start_date ?? undefined,
+        memo: r.memo ?? undefined,
       }));
     },
     async create(_input) {
@@ -374,12 +407,23 @@ export const supabaseDataSource: DataSource = {
       if (patch.displayName !== undefined)
         updateRow.display_name = patch.displayName;
       if (patch.active !== undefined) updateRow.active = patch.active;
+      if (patch.phone !== undefined) updateRow.phone = patch.phone ?? null;
+      if (patch.businessNumber !== undefined)
+        updateRow.business_number = patch.businessNumber ?? null;
+      if (patch.contractStartDate !== undefined)
+        updateRow.contract_start_date = patch.contractStartDate ?? null;
+      if (patch.memo !== undefined) updateRow.memo = patch.memo ?? null;
+      if (patch.bankAccount !== undefined) {
+        updateRow.bank_name = patch.bankAccount?.bank ?? null;
+        updateRow.bank_account = patch.bankAccount?.accountNumber ?? null;
+        updateRow.bank_holder = patch.bankAccount?.holder ?? null;
+      }
       const { data, error } = await sb
         .from("profiles")
         .update(updateRow)
         .eq("id", id)
         .select(
-          "id, role, center_id, part_id, display_name, active, created_at, email"
+          "id, role, center_id, part_id, display_name, active, created_at, email, phone, bank_name, bank_account, bank_holder, business_number, contract_start_date, memo"
         )
         .single();
       if (error) throw error;
@@ -392,6 +436,18 @@ export const supabaseDataSource: DataSource = {
         displayName: data.display_name,
         active: data.active,
         createdAt: data.created_at,
+        phone: data.phone ?? undefined,
+        bankAccount:
+          data.bank_name || data.bank_account
+            ? {
+                bank: data.bank_name ?? "",
+                accountNumber: data.bank_account ?? "",
+                holder: data.bank_holder ?? "",
+              }
+            : undefined,
+        businessNumber: data.business_number ?? undefined,
+        contractStartDate: data.contract_start_date ?? undefined,
+        memo: data.memo ?? undefined,
       };
     },
     async resetPassword(_id, _newPassword) {

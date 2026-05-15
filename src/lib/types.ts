@@ -28,6 +28,12 @@ export type InflowChannel =
 // 법인 admin이 발급/관리. 원장은 본인 정보만 R.
 export type UserRole = "admin" | "owner";
 
+export interface BankAccount {
+  bank: string;          // 은행명 (국민/신한/하나 등)
+  accountNumber: string; // 계좌번호
+  holder: string;        // 예금주
+}
+
 export interface UserProfile {
   id: string;              // auth user id
   email: string;
@@ -37,6 +43,24 @@ export interface UserProfile {
   displayName: string;
   active: boolean;
   createdAt: string;
+
+  // 원장 부가 정보 — 원장 본인이 /owner/profile 에서 입력
+  phone?: string;
+  bankAccount?: BankAccount;
+  businessNumber?: string;     // 사업자등록번호
+  contractStartDate?: string;  // 계약 시작일
+  memo?: string;
+}
+
+// 원장 프로필 완성도 — 정산에 필요한 필수 정보 다 채워졌는지
+export function isProfileComplete(p: UserProfile): boolean {
+  if (p.role !== "owner") return true;
+  return Boolean(
+    p.phone &&
+      p.bankAccount?.bank &&
+      p.bankAccount?.accountNumber &&
+      p.bankAccount?.holder
+  );
 }
 
 export interface UserCreateInput {

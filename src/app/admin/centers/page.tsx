@@ -6,6 +6,7 @@ import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { getDataSource } from "@/lib/data";
 import { fmtDate } from "@/lib/format";
 import {
+  isProfileComplete,
   PARTS,
   type Center,
   type PartId,
@@ -185,6 +186,46 @@ export default function AdminCentersPage() {
   }
 
   const partLabel = (id: PartId) => PARTS.find((p) => p.id === id)?.label ?? id;
+
+  function buildOnboardingMessage(
+    center: Center,
+    owner: UserProfile,
+    partId: PartId
+  ): string {
+    const site =
+      typeof window !== "undefined" ? window.location.origin : "(사이트 URL)";
+    return `[안녕메디컬 정산앱 안내]
+
+${owner.displayName} 원장님 안녕하세요.
+${center.name} ${partLabel(partId)} 파트 정산앱 계정이 발급되었습니다.
+
+🌐 사이트: ${site}
+📧 이메일: ${owner.email}
+🔑 초기 비밀번호: (별도로 안전한 채널로 전달드립니다)
+
+[첫 로그인 후 해야 할 일]
+1. 우상단 "내 정보" 클릭 → 다음 정보 입력
+   - 연락처
+   - 정산 계좌 (은행 / 계좌번호 / 예금주)
+   - 사업자등록번호 (있는 경우)
+2. 일일 매출 입력 / 환자 등록 / 방문 차트 작성은 메인 화면에서
+
+* 정산 계좌가 입력돼야 월말 정산 입금이 가능합니다.
+* 비밀번호는 첫 로그인 후 본인이 변경하시는 것을 권장합니다.
+
+감사합니다.`;
+  }
+
+  async function copyOnboarding(center: Center, owner: UserProfile, partId: PartId) {
+    const text = buildOnboardingMessage(center, owner, partId);
+    try {
+      await navigator.clipboard.writeText(text);
+      alert("안내 문자가 클립보드에 복사되었습니다. 카톡/문자에 붙여넣어 전송하세요.");
+    } catch {
+      // fallback: prompt
+      prompt("안내 문자 (수동 복사):", text);
+    }
+  }
 
   // 센터 × 파트 → 원장 매핑
   const ownerByCenterPart = useMemo(() => {
@@ -414,7 +455,30 @@ export default function AdminCentersPage() {
                                 )}
                               </div>
                               {owner ? (
-                                <div className="flex gap-1">
+                                <div className="flex items-center gap-1">
+                                  {isProfileComplete(owner) ? (
+                                    <span
+                                      className="rounded bg-moss-500/15 px-2 py-0.5 text-[9px] font-medium text-moss-700"
+                                      title="연락처/정산 계좌 모두 입력됨"
+                                    >
+                                      ✓ 완성
+                                    </span>
+                                  ) : (
+                                    <span
+                                      className="rounded bg-clay-500/15 px-2 py-0.5 text-[9px] font-medium text-clay-700"
+                                      title="원장님이 본인 정보 입력 필요"
+                                    >
+                                      ⚠️ 미완성
+                                    </span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => copyOnboarding(c, owner, partId)}
+                                    className="rounded border border-sand-200 bg-white px-2 py-1 text-[10px] hover:border-clay-400"
+                                    title="원장님께 보낼 안내 문자"
+                                  >
+                                    📋 안내문자
+                                  </button>
                                   <button
                                     type="button"
                                     onClick={() => toggleActive(owner)}
