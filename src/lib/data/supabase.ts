@@ -344,6 +344,11 @@ export const supabaseDataSource: DataSource = {
       const sb = createClient();
       await sb.auth.signOut();
     },
+    async changePassword(newPassword) {
+      const sb = createClient();
+      const { error } = await sb.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+    },
   },
 
   users: {

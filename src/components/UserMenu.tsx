@@ -28,6 +28,28 @@ export function UserMenu() {
     }
   }
 
+  async function handleChangePassword() {
+    const pwd = prompt("새 비밀번호를 입력하세요 (4자 이상):");
+    if (!pwd) return;
+    if (pwd.length < 4) {
+      alert("비밀번호는 최소 4자 이상이어야 합니다.");
+      return;
+    }
+    const confirm = prompt("확인을 위해 한 번 더 입력하세요:");
+    if (pwd !== confirm) {
+      alert("두 번 입력이 일치하지 않습니다.");
+      return;
+    }
+    try {
+      const data = await getDataSource();
+      await data.me.changePassword(pwd);
+      alert("비밀번호가 변경되었습니다.");
+      setOpen(false);
+    } catch (err) {
+      alert(`변경 실패: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   return (
     <div className="relative">
       <button
@@ -64,6 +86,13 @@ export function UserMenu() {
                 내 정보 수정
               </Link>
             )}
+            <button
+              type="button"
+              onClick={handleChangePassword}
+              className="block w-full px-4 py-2 text-left text-xs text-sand-700 hover:bg-sand-50"
+            >
+              비밀번호 변경
+            </button>
             <button
               type="button"
               onClick={handleLogout}

@@ -26,6 +26,16 @@ import {
 // Mock 사용자 — 시연용
 const MOCK_USERS: UserProfile[] = [
   {
+    id: "u-chairman",
+    email: "luzk36@naver.com",
+    role: "admin",
+    centerId: null,
+    partId: null,
+    displayName: "최경 회장",
+    active: true,
+    createdAt: "2026-01-01T00:00:00",
+  },
+  {
     id: "u-main",
     email: "jaewonhyeon9@gmail.com",
     role: "admin",
@@ -222,6 +232,17 @@ export const mockDataSource: DataSource = {
     },
     async logout() {
       setCurrentMockUserId(null);
+    },
+    async changePassword(newPassword) {
+      // Mock 모드: 실 검증 없이 localStorage에 기록만 남김
+      if (typeof window === "undefined") return;
+      if (newPassword.length < 4) {
+        throw new Error("비밀번호는 최소 4자 이상이어야 합니다.");
+      }
+      const id = getCurrentMockUserId();
+      if (!id) throw new Error("로그인이 필요합니다.");
+      // 데모 흐름 확인용 — 실제 운영에서는 Supabase auth.updateUser 사용
+      localStorage.setItem(`mock-pwd-${id}`, newPassword);
     },
   },
 

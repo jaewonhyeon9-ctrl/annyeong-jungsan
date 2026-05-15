@@ -36,7 +36,7 @@ export default function ManualPage() {
           </p>
         </hgroup>
 
-        <Section n={1} title="첫 로그인">
+        <Section n={1} title="첫 로그인 & 비밀번호 변경">
           <ul className="ml-4 list-disc space-y-1.5 text-sm">
             <li>
               사이트 주소:{" "}
@@ -45,11 +45,15 @@ export default function ManualPage() {
               </code>
             </li>
             <li>이메일: 발급받은 이메일</li>
-            <li>비밀번호: 별도 안내된 임시 비밀번호 (첫 로그인 후 변경 권장)</li>
+            <li>임시 비밀번호: 별도로 안내드린 값</li>
             <li>
               로그인하면 자동으로 <Strong>법인 정산 대시보드(/admin)</Strong> 로 이동합니다.
             </li>
           </ul>
+          <Note>
+            첫 로그인 후 우상단 본인 이름 옆 ▾ 클릭 →{" "}
+            <Strong>비밀번호 변경</Strong> 으로 본인이 새 비밀번호 설정하세요.
+          </Note>
         </Section>
 
         <Section n={2} title="지점(병원) 등록 — 최초 1회">
