@@ -52,10 +52,11 @@ function LoginInner() {
   }
 
   async function handleEmailPassword() {
+    const normalizedEmail = email.trim();
     if (!isSupabaseActive) {
       // 데모 모드 — 이메일로 mock 사용자 찾기
       const found = mockUsers.find(
-        (u) => u.email.toLowerCase() === email.trim().toLowerCase()
+        (u) => u.email.toLowerCase() === normalizedEmail.toLowerCase()
       );
       if (!found) {
         setError(
@@ -66,22 +67,39 @@ function LoginInner() {
       await loginAsMock(found);
       return;
     }
+    if (!normalizedEmail || !password) {
+      setError("이메일과 비밀번호를 입력해주세요.");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
       const { createClient } = await import("@/lib/supabase/client");
       const sb = createClient();
-      const { error } = await sb.auth.signInWithPassword({ email, password });
+      const { error } = await sb.auth.signInWithPassword({
+        email: normalizedEmail,
+        password,
+      });
       if (error) throw error;
       router.push(redirect);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      setError(
+        message === "Invalid login credentials"
+          ? "계정이 없거나 비밀번호가 맞지 않습니다. 처음 이용하는 원장님은 아래 '+ 원장 가입 신청'을 먼저 진행해주세요."
+          : message
+      );
     } finally {
       setLoading(false);
     }
   }
 
   async function handleMagicLink() {
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail) {
+      setError("이메일을 입력해주세요.");
+      return;
+    }
     if (!isSupabaseActive) {
       router.push(redirect);
       return;
@@ -92,13 +110,22 @@ function LoginInner() {
       const { createClient } = await import("@/lib/supabase/client");
       const sb = createClient();
       const { error } = await sb.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: `${location.origin}${redirect}` },
+        email: normalizedEmail,
+        options: {
+          emailRedirectTo: `${location.origin}${redirect}`,
+          shouldCreateUser: false,
+        },
       });
       if (error) throw error;
       setMagicLinkSent(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      setError(
+        message.includes("Signups not allowed") ||
+          message.includes("User not found")
+          ? "등록된 계정이 없습니다. 먼저 '+ 원장 가입 신청'을 진행해주세요."
+          : message
+      );
     } finally {
       setLoading(false);
     }

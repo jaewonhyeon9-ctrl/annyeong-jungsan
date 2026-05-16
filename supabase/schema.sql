@@ -157,7 +157,7 @@ create index on public.visits (center_id, visit_date desc);
 create table public.visit_sale_lines (
   id           uuid primary key default gen_random_uuid(),
   visit_id     uuid not null references public.visits(id) on delete cascade,
-  service_id   text not null references public.services(id),
+  service_id   text not null,
   service_name text not null,
   part_id      part_id not null,
   cash         integer not null default 0,
@@ -190,7 +190,7 @@ create index on public.daily_entries (center_id, entry_date desc);
 create table public.sale_lines (
   id           uuid primary key default gen_random_uuid(),
   entry_id     uuid not null references public.daily_entries(id) on delete cascade,
-  service_id   text not null references public.services(id),
+  service_id   text not null,
   service_name text not null,       -- snapshot
   part_id      part_id not null,    -- snapshot
   cash         integer not null default 0,
@@ -287,6 +287,12 @@ language sql stable as $$
   select center_id from public.profiles where id = auth.uid()
 $$;
 
+-- helper: 현재 프로필 활성 여부. inactive owner는 업무 데이터 접근 불가.
+create or replace function public.current_profile_active() returns boolean
+language sql stable as $$
+  select coalesce(active, false) from public.profiles where id = auth.uid()
+$$;
+
 -- 카탈로그(services/products): 모두 SELECT 가능, admin만 변경
 create policy "services_read" on public.services for select using (true);
 create policy "services_admin_write" on public.services for all using (
@@ -297,9 +303,9 @@ create policy "products_admin_write" on public.products for all using (
   public.current_role() = 'admin'
 ) with check (public.current_role() = 'admin');
 
--- centers: admin은 전체, owner는 자기 센터
+-- centers: 가입 화면에서 활성 지점 선택 가능. admin은 전체, owner는 자기 센터.
 create policy "centers_read" on public.centers for select using (
-  public.current_role() = 'admin' or id = public.current_center_id()
+  active = true or public.current_role() = 'admin' or id = public.current_center_id()
 );
 create policy "centers_admin_write" on public.centers for all using (
   public.current_role() = 'admin'
@@ -315,12 +321,15 @@ create policy "profiles_admin_write" on public.profiles for all using (
 
 -- daily_entries: owner는 자기 센터만, admin은 전체
 create policy "entries_read" on public.daily_entries for select using (
-  public.current_role() = 'admin' or center_id = public.current_center_id()
+  public.current_role() = 'admin'
+  or (public.current_profile_active() and center_id = public.current_center_id())
 );
 create policy "entries_owner_write" on public.daily_entries for all using (
-  center_id = public.current_center_id() or public.current_role() = 'admin'
+  public.current_role() = 'admin'
+  or (public.current_profile_active() and center_id = public.current_center_id())
 ) with check (
-  center_id = public.current_center_id() or public.current_role() = 'admin'
+  public.current_role() = 'admin'
+  or (public.current_profile_active() and center_id = public.current_center_id())
 );
 
 -- 자식 테이블 — entry의 권한을 따름
@@ -330,23 +339,33 @@ create policy "sale_lines_via_entry" on public.sale_lines for all using (
   exists (
     select 1 from public.daily_entries e
     where e.id = sale_lines.entry_id
-      and (public.current_role() = 'admin' or e.center_id = public.current_center_id())
+      and (
+        public.current_role() = 'admin'
+        or (public.current_profile_active() and e.center_id = public.current_center_id())
+      )
   )
   and (
     public.current_role() = 'admin'
-    or public.current_part_id() is null
-    or sale_lines.part_id = public.current_part_id()
+    or (
+      public.current_profile_active()
+      and (public.current_part_id() is null or sale_lines.part_id = public.current_part_id())
+    )
   )
 ) with check (
   exists (
     select 1 from public.daily_entries e
     where e.id = sale_lines.entry_id
-      and (public.current_role() = 'admin' or e.center_id = public.current_center_id())
+      and (
+        public.current_role() = 'admin'
+        or (public.current_profile_active() and e.center_id = public.current_center_id())
+      )
   )
   and (
     public.current_role() = 'admin'
-    or public.current_part_id() is null
-    or sale_lines.part_id = public.current_part_id()
+    or (
+      public.current_profile_active()
+      and (public.current_part_id() is null or sale_lines.part_id = public.current_part_id())
+    )
   )
 );
 
@@ -354,13 +373,19 @@ create policy "product_sales_via_entry" on public.product_sale_lines for all usi
   exists (
     select 1 from public.daily_entries e
     where e.id = product_sale_lines.entry_id
-      and (public.current_role() = 'admin' or e.center_id = public.current_center_id())
+      and (
+        public.current_role() = 'admin'
+        or (public.current_profile_active() and e.center_id = public.current_center_id())
+      )
   )
 ) with check (
   exists (
     select 1 from public.daily_entries e
     where e.id = product_sale_lines.entry_id
-      and (public.current_role() = 'admin' or e.center_id = public.current_center_id())
+      and (
+        public.current_role() = 'admin'
+        or (public.current_profile_active() and e.center_id = public.current_center_id())
+      )
   )
 );
 
@@ -368,24 +393,33 @@ create policy "product_consumptions_via_entry" on public.product_consumptions fo
   exists (
     select 1 from public.daily_entries e
     where e.id = product_consumptions.entry_id
-      and (public.current_role() = 'admin' or e.center_id = public.current_center_id())
+      and (
+        public.current_role() = 'admin'
+        or (public.current_profile_active() and e.center_id = public.current_center_id())
+      )
   )
 ) with check (
   exists (
     select 1 from public.daily_entries e
     where e.id = product_consumptions.entry_id
-      and (public.current_role() = 'admin' or e.center_id = public.current_center_id())
+      and (
+        public.current_role() = 'admin'
+        or (public.current_profile_active() and e.center_id = public.current_center_id())
+      )
   )
 );
 
 -- inflow: owner는 자기 센터만, admin은 전체
 create policy "inflow_read" on public.inflow_entries for select using (
-  public.current_role() = 'admin' or center_id = public.current_center_id()
+  public.current_role() = 'admin'
+  or (public.current_profile_active() and center_id = public.current_center_id())
 );
 create policy "inflow_write" on public.inflow_entries for all using (
-  center_id = public.current_center_id() or public.current_role() = 'admin'
+  public.current_role() = 'admin'
+  or (public.current_profile_active() and center_id = public.current_center_id())
 ) with check (
-  center_id = public.current_center_id() or public.current_role() = 'admin'
+  public.current_role() = 'admin'
+  or (public.current_profile_active() and center_id = public.current_center_id())
 );
 
 -- 정산 룰: 모두 READ, admin만 WRITE
@@ -396,12 +430,15 @@ create policy "rules_admin_write" on public.settlement_rules for all using (
 
 -- 환자 — 원장은 자기 센터, admin은 전체 (단 개인정보 X)
 create policy "patients_read" on public.patients for select using (
-  public.current_role() = 'admin' or center_id = public.current_center_id()
+  public.current_role() = 'admin'
+  or (public.current_profile_active() and center_id = public.current_center_id())
 );
 create policy "patients_owner_write" on public.patients for all using (
-  center_id = public.current_center_id() or public.current_role() = 'admin'
+  public.current_role() = 'admin'
+  or (public.current_profile_active() and center_id = public.current_center_id())
 ) with check (
-  center_id = public.current_center_id() or public.current_role() = 'admin'
+  public.current_role() = 'admin'
+  or (public.current_profile_active() and center_id = public.current_center_id())
 );
 
 -- 개인정보 — 해당 환자의 센터 원장만 (admin도 못 봄)
@@ -409,12 +446,14 @@ create policy "patient_personal_owner_only" on public.patient_personal for all u
   exists (
     select 1 from public.patients p
     where p.id = patient_personal.patient_id
+      and public.current_profile_active()
       and p.center_id = public.current_center_id()
   )
 ) with check (
   exists (
     select 1 from public.patients p
     where p.id = patient_personal.patient_id
+      and public.current_profile_active()
       and p.center_id = public.current_center_id()
   )
 );
@@ -424,6 +463,7 @@ create policy "patient_charts_read" on public.patient_charts for select using (
   public.current_role() = 'admin' or exists (
     select 1 from public.patients p
     where p.id = patient_charts.patient_id
+      and public.current_profile_active()
       and p.center_id = public.current_center_id()
   )
 );
@@ -431,13 +471,19 @@ create policy "patient_charts_write" on public.patient_charts for all using (
   exists (
     select 1 from public.patients p
     where p.id = patient_charts.patient_id
-      and (public.current_role() = 'admin' or p.center_id = public.current_center_id())
+      and (
+        public.current_role() = 'admin'
+        or (public.current_profile_active() and p.center_id = public.current_center_id())
+      )
   )
 ) with check (
   exists (
     select 1 from public.patients p
     where p.id = patient_charts.patient_id
-      and (public.current_role() = 'admin' or p.center_id = public.current_center_id())
+      and (
+        public.current_role() = 'admin'
+        or (public.current_profile_active() and p.center_id = public.current_center_id())
+      )
   )
 );
 
@@ -445,6 +491,8 @@ create policy "patient_charts_write" on public.patient_charts for all using (
 create policy "visits_read" on public.visits for select using (
   public.current_role() = 'admin'
   or (
+    public.current_profile_active()
+    and
     center_id = public.current_center_id()
     and (public.current_part_id() is null or part_id = public.current_part_id())
   )
@@ -452,12 +500,16 @@ create policy "visits_read" on public.visits for select using (
 create policy "visits_write" on public.visits for all using (
   public.current_role() = 'admin'
   or (
+    public.current_profile_active()
+    and
     center_id = public.current_center_id()
     and (public.current_part_id() is null or part_id = public.current_part_id())
   )
 ) with check (
   public.current_role() = 'admin'
   or (
+    public.current_profile_active()
+    and
     center_id = public.current_center_id()
     and (public.current_part_id() is null or part_id = public.current_part_id())
   )
@@ -466,23 +518,39 @@ create policy "visit_sale_lines_via_visit" on public.visit_sale_lines for all us
   exists (
     select 1 from public.visits v
     where v.id = visit_sale_lines.visit_id
-      and (public.current_role() = 'admin' or v.center_id = public.current_center_id())
+      and (
+        public.current_role() = 'admin'
+        or (public.current_profile_active() and v.center_id = public.current_center_id())
+      )
   )
   and (
     public.current_role() = 'admin'
-    or public.current_part_id() is null
-    or visit_sale_lines.part_id = public.current_part_id()
+    or (
+      public.current_profile_active()
+      and (
+        public.current_part_id() is null
+        or visit_sale_lines.part_id = public.current_part_id()
+      )
+    )
   )
 ) with check (
   exists (
     select 1 from public.visits v
     where v.id = visit_sale_lines.visit_id
-      and (public.current_role() = 'admin' or v.center_id = public.current_center_id())
+      and (
+        public.current_role() = 'admin'
+        or (public.current_profile_active() and v.center_id = public.current_center_id())
+      )
   )
   and (
     public.current_role() = 'admin'
-    or public.current_part_id() is null
-    or visit_sale_lines.part_id = public.current_part_id()
+    or (
+      public.current_profile_active()
+      and (
+        public.current_part_id() is null
+        or visit_sale_lines.part_id = public.current_part_id()
+      )
+    )
   )
 );
 
@@ -507,5 +575,40 @@ create trigger rules_touch before update on public.settlement_rules
 -- ============================================================
 -- 9) 시드 데이터 (초기 1개 센터 + 기본 카탈로그)
 -- ============================================================
--- 카탈로그 시드는 src/lib/services.ts 와 동일 — 별도 시드 스크립트로 분리하거나
--- Supabase Dashboard 에서 직접 입력
+insert into public.services (id, part_id, name, default_price, sort_order) values
+  ('scalp.naeseong', 'scalp', '내성', 80000, 10),
+  ('scalp.gakjil', 'scalp', '발각질', 50000, 20),
+  ('scalp.scaling', 'scalp', '스케일링', 70000, 30),
+  ('scalp.laser', 'scalp', '레이저', 120000, 40),
+  ('pm.eyebrow', 'permanent_makeup', '눈썹', 250000, 50),
+  ('pm.eyeline', 'permanent_makeup', '아이라인', 200000, 60),
+  ('pm.lip', 'permanent_makeup', '입술', 350000, 70),
+  ('pm.hairline', 'permanent_makeup', '헤어라인', 400000, 80),
+  ('smp.partial', 'smp', '부분', 500000, 90),
+  ('smp.full', 'smp', '전체', 1500000, 100),
+  ('smp.retouch', 'smp', '리터치', 200000, 110),
+  ('pedi.basic', 'pedicure', '기본', 40000, 120),
+  ('pedi.care', 'pedicure', '케어', 60000, 130),
+  ('pedi.nailart', 'pedicure', '네일아트', 80000, 140),
+  ('skin.facial', 'skincare', '페이셜', 100000, 150),
+  ('skin.lifting', 'skincare', '리프팅', 150000, 160),
+  ('skin.peeling', 'skincare', '필링', 90000, 170),
+  ('skin.massage', 'skincare', '마사지', 80000, 180)
+on conflict (id) do update set
+  part_id = excluded.part_id,
+  name = excluded.name,
+  default_price = excluded.default_price,
+  sort_order = excluded.sort_order;
+
+insert into public.products (id, name, default_price, kind) values
+  ('clean_ampule', '클린앰플', 35000, 'sale'),
+  ('smooth_ampule', '스무스앰플', 35000, 'sale'),
+  ('active_ampule', '엑티브앰플', 40000, 'sale'),
+  ('repair_mist', '리페어미스트', 30000, 'sale'),
+  ('pure_mist', '퓨어미스트', 30000, 'sale'),
+  ('onycoclip', '오니코클립', 0, 'consumable'),
+  ('medisop_footcream', '메디솝풋크림', 25000, 'both')
+on conflict (id) do update set
+  name = excluded.name,
+  default_price = excluded.default_price,
+  kind = excluded.kind;

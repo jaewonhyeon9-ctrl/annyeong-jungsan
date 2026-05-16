@@ -320,9 +320,13 @@ export default function AdminUsersPage() {
                           <button
                             type="button"
                             onClick={() => toggleActive(u)}
-                            className="mr-1 rounded border border-sand-200 px-2 py-1 text-[11px] hover:border-sand-400"
+                            className={`mr-1 rounded border px-2 py-1 text-[11px] ${
+                              u.active
+                                ? "border-sand-200 text-sand-600 hover:border-sand-400"
+                                : "border-moss-500 bg-moss-500/10 font-semibold text-moss-700 hover:bg-moss-500/20"
+                            }`}
                           >
-                            {u.active ? "비활성" : "활성"}
+                            {u.active ? "정지하기" : "승인하기"}
                           </button>
                           <button
                             type="button"
@@ -379,9 +383,13 @@ export default function AdminUsersPage() {
                       <button
                         type="button"
                         onClick={() => toggleActive(u)}
-                        className="flex-1 rounded-lg border border-sand-200 bg-white px-3 py-2 text-xs hover:border-sand-400"
+                        className={`flex-1 rounded-lg border px-3 py-2 text-xs ${
+                          u.active
+                            ? "border-sand-200 bg-white text-sand-700 hover:border-sand-400"
+                            : "border-moss-500 bg-moss-500/10 font-semibold text-moss-700 hover:bg-moss-500/20"
+                        }`}
                       >
-                        {u.active ? "비활성화" : "활성화"}
+                        {u.active ? "정지하기" : "승인하기"}
                       </button>
                       <button
                         type="button"

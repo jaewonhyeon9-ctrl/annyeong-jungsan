@@ -295,7 +295,13 @@ export const mockDataSource: DataSource = {
       return clone(readStore().centers);
     },
     async current() {
-      return clone(readStore().centers[0] ?? null);
+      const store = readStore();
+      const userId = getCurrentMockUserId();
+      const user = userId ? store.users.find((u) => u.id === userId) : null;
+      if (user?.centerId) {
+        return clone(store.centers.find((c) => c.id === user.centerId) ?? null);
+      }
+      return clone(store.centers[0] ?? null);
     },
     async create(input: CenterCreateInput) {
       const center: Center = {

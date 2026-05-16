@@ -31,6 +31,7 @@ import type {
   Pregnancy,
   SettlementRule,
   Severity,
+  UserProfile,
   Visit,
 } from "@/lib/types";
 import { DEFAULT_RULE, emptyChannels } from "@/lib/types";
@@ -402,11 +403,23 @@ export const supabaseDataSource: DataSource = {
         memo: r.memo ?? undefined,
       }));
     },
-    async create(_input) {
-      // 신규 사용자 생성은 service_role 권한 필요 — server route 또는 Supabase Dashboard
-      throw new Error(
-        "사용자 생성은 서버 측 admin API 가 필요합니다. Supabase Dashboard → Authentication → Users 에서 직접 추가 후 SQL 로 profiles row 삽입하세요."
-      );
+    async create(input) {
+      const response = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      const result = (await response.json()) as
+        | UserProfile
+        | { error?: string };
+      if (!response.ok) {
+        throw new Error(
+          "error" in result && result.error
+            ? result.error
+            : "사용자 생성에 실패했습니다."
+        );
+      }
+      return result as UserProfile;
     },
     async update(id, patch) {
       const sb = createClient();
@@ -652,8 +665,43 @@ export const supabaseDataSource: DataSource = {
         .eq("patient_id", patientId)
         .order("visit_date", { ascending: false });
       if (error) throw error;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return ((data ?? []) as any[]).map((r) => rowToVisit(r));
+      const rows = (data ?? []) as {
+        id: string;
+        patient_id: string;
+        center_id: string;
+        visit_date: string;
+        part_id: PartId;
+        visit_memo: string | null;
+        created_at: string;
+      }[];
+      const visitIds = rows.map((r) => r.id);
+      const salesByVisit = new Map<string, Visit["sales"]>();
+      if (visitIds.length > 0) {
+        const { data: saleRows, error: saleError } = await sb
+          .from("visit_sale_lines")
+          .select("visit_id, service_id, service_name, part_id, cash, card")
+          .in("visit_id", visitIds);
+        if (saleError) throw saleError;
+        for (const r of (saleRows ?? []) as {
+          visit_id: string;
+          service_id: string;
+          service_name: string;
+          part_id: PartId;
+          cash: number;
+          card: number;
+        }[]) {
+          const lines = salesByVisit.get(r.visit_id) ?? [];
+          lines.push({
+            serviceId: r.service_id,
+            serviceName: r.service_name,
+            partId: r.part_id,
+            cash: r.cash,
+            card: r.card,
+          });
+          salesByVisit.set(r.visit_id, lines);
+        }
+      }
+      return rows.map((r) => rowToVisit(r, salesByVisit.get(r.id) ?? []));
     },
     async create(input: VisitCreateInput) {
       const sb = createClient();
