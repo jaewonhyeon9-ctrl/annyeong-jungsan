@@ -31,6 +31,30 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             사용자 관리
           </Link>
           <Link
+            href="/admin/services"
+            className="rounded-lg px-3 py-1.5 text-xs font-medium text-sand-700 hover:bg-sand-100"
+          >
+            시술
+          </Link>
+          <Link
+            href="/admin/products"
+            className="rounded-lg px-3 py-1.5 text-xs font-medium text-sand-700 hover:bg-sand-100"
+          >
+            제품
+          </Link>
+          <Link
+            href="/admin/symptoms"
+            className="rounded-lg px-3 py-1.5 text-xs font-medium text-sand-700 hover:bg-sand-100"
+          >
+            증상
+          </Link>
+          <Link
+            href="/admin/homecare"
+            className="rounded-lg px-3 py-1.5 text-xs font-medium text-sand-700 hover:bg-sand-100"
+          >
+            홈케어
+          </Link>
+          <Link
             href="/manual"
             className="ml-auto rounded-lg px-3 py-1.5 text-xs font-medium text-sand-500 hover:bg-sand-100"
           >
