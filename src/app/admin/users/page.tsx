@@ -112,8 +112,12 @@ export default function AdminUsersPage() {
   }
 
   async function resetPassword(u: UserProfile) {
-    const pwd = prompt(`${u.displayName} 의 새 비밀번호 입력:`);
+    const pwd = prompt(`${u.displayName} 의 새 비밀번호 입력 (6자 이상):`);
     if (!pwd) return;
+    if (pwd.length < 6) {
+      alert("비밀번호는 최소 6자 이상이어야 합니다.");
+      return;
+    }
     try {
       const data = await getDataSource();
       await data.users.resetPassword(u.id, pwd);
@@ -313,7 +317,13 @@ export default function AdminUsersPage() {
                               u.active ? "text-moss-600" : "text-sand-400"
                             }`}
                           >
-                            {u.active ? "활성" : "비활성"}
+                            {u.role === "owner"
+                              ? u.active
+                                ? "승인됨"
+                                : "승인 대기"
+                              : u.active
+                              ? "활성"
+                              : "비활성"}
                           </span>
                         </td>
                         <td className="py-2 text-right">
@@ -374,7 +384,13 @@ export default function AdminUsersPage() {
                                 : "bg-sand-200 text-sand-500"
                             }`}
                           >
-                            {u.active ? "활성" : "비활성"}
+                            {u.role === "owner"
+                              ? u.active
+                                ? "승인됨"
+                                : "승인 대기"
+                              : u.active
+                              ? "활성"
+                              : "비활성"}
                           </span>
                         </div>
                       </div>

@@ -311,20 +311,30 @@ export default function PatientDetailPage({
                       key={v.id}
                       className="rounded-lg bg-sand-100/60 px-3 py-3"
                     >
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-2">
                         <div className="text-sm font-semibold text-sand-800">
                           {fmtDate(v.visitDate)}
                           <span className="ml-2 rounded bg-sand-200 px-1.5 py-0.5 text-[10px] font-medium text-sand-700">
                             {partLabel(v.partId)}
                           </span>
                         </div>
-                        <div className="text-right text-xs tabular">
-                          <div className="font-bold text-clay-600">
-                            {fmtWon(cash + card)}
+                        <div className="flex items-center gap-2">
+                          <div className="text-right text-xs tabular">
+                            <div className="font-bold text-clay-600">
+                              {fmtWon(cash + card)}
+                            </div>
+                            <div className="text-[10px] text-sand-500">
+                              현 {fmtWon(cash)} · 카 {fmtWon(card)}
+                            </div>
                           </div>
-                          <div className="text-[10px] text-sand-500">
-                            현 {fmtWon(cash)} · 카 {fmtWon(card)}
-                          </div>
+                          <Link
+                            href={`/owner/patients/${patient.id}/visit?edit=${v.id}`}
+                            className="rounded border border-sand-300 bg-white px-2 py-1 text-[10px] font-medium text-sand-700 hover:border-clay-400"
+                            aria-label="방문 차트 수정/삭제"
+                            title="수정 / 삭제"
+                          >
+                            ✎
+                          </Link>
                         </div>
                       </div>
                       {v.sales.length > 0 && (

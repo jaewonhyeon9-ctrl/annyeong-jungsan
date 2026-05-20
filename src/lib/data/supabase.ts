@@ -27,6 +27,7 @@ import type {
   InflowChannel,
   InflowEntry,
   Patient,
+  PatientTag,
   PartId,
   Pregnancy,
   SettlementRule,
@@ -64,6 +65,7 @@ function rowToPatient(r: {
   first_visit_date: string;
   inflow_channels: InflowChannel[];
   consent: boolean;
+  tags?: PatientTag[] | null;
   created_at: string;
   updated_at: string;
   personal?: {
@@ -138,6 +140,7 @@ function rowToPatient(r: {
     firstVisitDate: r.first_visit_date,
     inflowChannels: r.inflow_channels,
     consent: r.consent,
+    tags: r.tags ?? undefined,
     personal,
     chart,
     createdAt: r.created_at,
@@ -151,6 +154,7 @@ const PATIENT_SELECT = `
   first_visit_date,
   inflow_channels,
   consent,
+  tags,
   created_at,
   updated_at,
   personal:patient_personal(
@@ -244,6 +248,8 @@ function rowToVisit(
     visit_date: string;
     part_id: PartId;
     visit_memo: string | null;
+    before_photo_url?: string | null;
+    after_photo_url?: string | null;
     created_at: string;
   },
   saleLines: Visit["sales"] = []
@@ -258,6 +264,8 @@ function rowToVisit(
     productSales: [],
     productConsumption: [],
     visitMemo: r.visit_memo ?? undefined,
+    beforePhotoUrl: r.before_photo_url ?? undefined,
+    afterPhotoUrl: r.after_photo_url ?? undefined,
     createdAt: r.created_at,
   };
 }
@@ -473,10 +481,16 @@ export const supabaseDataSource: DataSource = {
         memo: data.memo ?? undefined,
       };
     },
-    async resetPassword(_id, _newPassword) {
-      throw new Error(
-        "비번 리셋은 service_role 권한 필요. Supabase Dashboard → Authentication → Users 에서 진행하세요."
-      );
+    async resetPassword(id, newPassword) {
+      const response = await fetch("/api/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, password: newPassword }),
+      });
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(result.error ?? "비밀번호 재설정에 실패했습니다.");
+      }
     },
   },
 
@@ -534,6 +548,33 @@ export const supabaseDataSource: DataSource = {
       if (error) throw error;
       return rowToCenter(data);
     },
+    async delete(id) {
+      const sb = createClient();
+      // 안전 검사 — 환자/원장 계정이 있으면 거부
+      const { count: patientCount, error: pErr } = await sb
+        .from("patients")
+        .select("id", { count: "exact", head: true })
+        .eq("center_id", id);
+      if (pErr) throw pErr;
+      if ((patientCount ?? 0) > 0) {
+        throw new Error(
+          "이 지점에 등록된 환자가 있어 삭제할 수 없습니다. 환자를 다른 지점으로 이동하거나 먼저 삭제하세요."
+        );
+      }
+      const { count: ownerCount, error: oErr } = await sb
+        .from("profiles")
+        .select("id", { count: "exact", head: true })
+        .eq("center_id", id)
+        .eq("role", "owner");
+      if (oErr) throw oErr;
+      if ((ownerCount ?? 0) > 0) {
+        throw new Error(
+          "이 지점에 배정된 원장 계정이 있어 삭제할 수 없습니다. 먼저 계정을 다른 지점으로 옮기거나 정지하세요."
+        );
+      }
+      const { error } = await sb.from("centers").delete().eq("id", id);
+      if (error) throw error;
+    },
   },
 
   patients: {
@@ -587,8 +628,9 @@ export const supabaseDataSource: DataSource = {
           first_visit_date: input.firstVisitDate,
           inflow_channels: input.inflowChannels,
           consent: input.consent,
+          tags: input.tags ?? [],
         })
-        .select("id, center_id, first_visit_date, inflow_channels, consent, created_at, updated_at")
+        .select("id, center_id, first_visit_date, inflow_channels, consent, tags, created_at, updated_at")
         .single();
       if (error) throw error;
 
@@ -620,6 +662,7 @@ export const supabaseDataSource: DataSource = {
       if (patch.consent !== undefined) patientsPatch.consent = patch.consent;
       if (patch.firstVisitDate !== undefined)
         patientsPatch.first_visit_date = patch.firstVisitDate;
+      if (patch.tags !== undefined) patientsPatch.tags = patch.tags ?? [];
 
       if (Object.keys(patientsPatch).length > 0) {
         const { error } = await sb
@@ -660,7 +703,7 @@ export const supabaseDataSource: DataSource = {
       const { data, error } = await sb
         .from("visits")
         .select(
-          "id, patient_id, center_id, visit_date, part_id, visit_memo, created_at"
+          "id, patient_id, center_id, visit_date, part_id, visit_memo, before_photo_url, after_photo_url, created_at"
         )
         .eq("patient_id", patientId)
         .order("visit_date", { ascending: false });
@@ -672,6 +715,8 @@ export const supabaseDataSource: DataSource = {
         visit_date: string;
         part_id: PartId;
         visit_memo: string | null;
+        before_photo_url: string | null;
+        after_photo_url: string | null;
         created_at: string;
       }[];
       const visitIds = rows.map((r) => r.id);
@@ -703,6 +748,37 @@ export const supabaseDataSource: DataSource = {
       }
       return rows.map((r) => rowToVisit(r, salesByVisit.get(r.id) ?? []));
     },
+    async get(id) {
+      const sb = createClient();
+      const { data, error } = await sb
+        .from("visits")
+        .select(
+          "id, patient_id, center_id, visit_date, part_id, visit_memo, before_photo_url, after_photo_url, created_at"
+        )
+        .eq("id", id)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return null;
+      const { data: saleRows, error: saleErr } = await sb
+        .from("visit_sale_lines")
+        .select("service_id, service_name, part_id, cash, card")
+        .eq("visit_id", id);
+      if (saleErr) throw saleErr;
+      const sales = ((saleRows ?? []) as {
+        service_id: string;
+        service_name: string;
+        part_id: PartId;
+        cash: number;
+        card: number;
+      }[]).map((r) => ({
+        serviceId: r.service_id,
+        serviceName: r.service_name,
+        partId: r.part_id,
+        cash: r.cash,
+        card: r.card,
+      }));
+      return rowToVisit(data, sales);
+    },
     async create(input: VisitCreateInput) {
       const sb = createClient();
       const { data: visitRow, error } = await sb
@@ -713,9 +789,11 @@ export const supabaseDataSource: DataSource = {
           visit_date: input.visitDate,
           part_id: input.partId,
           visit_memo: input.visitMemo ?? null,
+          before_photo_url: input.beforePhotoUrl ?? null,
+          after_photo_url: input.afterPhotoUrl ?? null,
         })
         .select(
-          "id, patient_id, center_id, visit_date, part_id, visit_memo, created_at"
+          "id, patient_id, center_id, visit_date, part_id, visit_memo, before_photo_url, after_photo_url, created_at"
         )
         .single();
       if (error) throw error;
@@ -735,6 +813,60 @@ export const supabaseDataSource: DataSource = {
       }
 
       return rowToVisit(visitRow, input.sales);
+    },
+    async update(id, patch) {
+      const sb = createClient();
+      const update: Record<string, unknown> = {};
+      if (patch.visitDate !== undefined) update.visit_date = patch.visitDate;
+      if (patch.partId !== undefined) update.part_id = patch.partId;
+      if (patch.visitMemo !== undefined)
+        update.visit_memo = patch.visitMemo ?? null;
+      if (patch.beforePhotoUrl !== undefined)
+        update.before_photo_url = patch.beforePhotoUrl ?? null;
+      if (patch.afterPhotoUrl !== undefined)
+        update.after_photo_url = patch.afterPhotoUrl ?? null;
+
+      if (Object.keys(update).length > 0) {
+        const { error } = await sb.from("visits").update(update).eq("id", id);
+        if (error) throw error;
+      }
+
+      // sales 라인을 교체하는 패턴 — patch.sales가 명시되면 기존 라인 삭제 후 새로 삽입
+      if (patch.sales !== undefined) {
+        const { error: delErr } = await sb
+          .from("visit_sale_lines")
+          .delete()
+          .eq("visit_id", id);
+        if (delErr) throw delErr;
+        if (patch.sales.length > 0) {
+          const { error: insErr } = await sb.from("visit_sale_lines").insert(
+            patch.sales.map((s) => ({
+              visit_id: id,
+              service_id: s.serviceId,
+              service_name: s.serviceName,
+              part_id: s.partId,
+              cash: s.cash,
+              card: s.card,
+            }))
+          );
+          if (insErr) throw insErr;
+        }
+      }
+
+      const updated = await this.get(id);
+      if (!updated) throw new Error("visit not found after update");
+      return updated;
+    },
+    async delete(id) {
+      const sb = createClient();
+      // visit_sale_lines는 ON DELETE CASCADE 가정 — 아니면 명시적으로 먼저 삭제
+      const { error: lineErr } = await sb
+        .from("visit_sale_lines")
+        .delete()
+        .eq("visit_id", id);
+      if (lineErr) throw lineErr;
+      const { error } = await sb.from("visits").delete().eq("id", id);
+      if (error) throw error;
     },
   },
 

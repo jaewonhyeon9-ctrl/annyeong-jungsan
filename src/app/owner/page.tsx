@@ -198,6 +198,19 @@ export default function OwnerHome() {
     setSaveNotice(null);
     try {
       const data = await getDataSource();
+      const existingEntries = await data.entries.byMonth(centerId, date.slice(0, 7));
+      const hasManualEntryForDate = existingEntries.some(
+        (entry) => entry.date === date && !entry.id.startsWith("visit-")
+      );
+      if (
+        hasManualEntryForDate &&
+        !window.confirm(
+          `${fmtDate(date)}에 이미 직접 저장한 매출이 있습니다.\n추가로 저장하면 정산에 함께 합산됩니다. 계속 저장할까요?`
+        )
+      ) {
+        setSaving(false);
+        return;
+      }
       const catalogSales = filled.map(([serviceId, v]) => {
         const svc = findService(serviceId)!;
         return {

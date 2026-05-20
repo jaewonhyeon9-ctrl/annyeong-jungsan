@@ -109,6 +109,31 @@ export default function AdminCentersPage() {
     }
   }
 
+  async function handleDeleteCenter(center: Center) {
+    const owners = users.filter(
+      (u) => u.centerId === center.id && u.role === "owner"
+    );
+    if (owners.length > 0) {
+      alert(
+        `이 지점에 배정된 원장 계정이 ${owners.length}개 있습니다. 먼저 계정을 정지하거나 다른 지점으로 옮긴 뒤 삭제하세요.`
+      );
+      return;
+    }
+    const confirmed = window.confirm(
+      `지점 "${center.name}" 을(를) 정말 삭제하시겠습니까?\n\n` +
+        `이 지점에 등록된 환자가 있으면 삭제되지 않습니다.\n` +
+        `이 작업은 되돌릴 수 없습니다.`
+    );
+    if (!confirmed) return;
+    try {
+      const data = await getDataSource();
+      await data.centers.delete(center.id);
+      await load();
+    } catch (err) {
+      alert(`삭제 실패: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   async function togglePart(center: Center, partId: PartId) {
     const enabled = center.enabledParts.includes(partId);
     const next = enabled
@@ -174,8 +199,12 @@ export default function AdminCentersPage() {
   }
 
   async function resetPassword(u: UserProfile) {
-    const pwd = prompt(`${u.displayName} 의 새 비밀번호 입력:`);
+    const pwd = prompt(`${u.displayName} 의 새 비밀번호 입력 (6자 이상):`);
     if (!pwd) return;
+    if (pwd.length < 6) {
+      alert("비밀번호는 최소 6자 이상이어야 합니다.");
+      return;
+    }
     try {
       const data = await getDataSource();
       await data.users.resetPassword(u.id, pwd);
@@ -360,8 +389,8 @@ ${center.name} ${partLabel(partId)} 파트 BeautyChain 정산앱 계정이 발�
             <Card key={c.id}>
               <CardBody>
                 {/* 지점 헤더 */}
-                <div className="flex items-start justify-between">
-                  <div>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
                     <div className="text-lg font-bold text-sand-900">
                       {c.name}
                     </div>
@@ -374,13 +403,23 @@ ${center.name} ${partLabel(partId)} 파트 BeautyChain 정산앱 계정이 발�
                       <div className="text-xs text-sand-500">{c.phone}</div>
                     )}
                   </div>
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase text-sand-500">
-                      개설일
+                  <div className="flex flex-col items-end gap-1.5">
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase text-sand-500">
+                        개설일
+                      </div>
+                      <div className="text-xs text-sand-600">
+                        {fmtDate(c.createdAt)}
+                      </div>
                     </div>
-                    <div className="text-xs text-sand-600">
-                      {fmtDate(c.createdAt)}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteCenter(c)}
+                      className="rounded border border-clay-300 bg-white px-2 py-1 text-[10px] font-medium text-clay-700 hover:bg-clay-500/10"
+                      title="지점 삭제"
+                    >
+                      🗑 삭제
+                    </button>
                   </div>
                 </div>
 
@@ -500,8 +539,9 @@ ${center.name} ${partLabel(partId)} 파트 BeautyChain 정산앱 계정이 발�
                                       type="button"
                                       onClick={() => toggleActive(owner)}
                                       className="flex-1 rounded border border-sand-200 bg-white px-2 py-1.5 text-[11px] hover:border-sand-400"
+                                      title="이미 승인된 계정입니다. 누르면 계정을 정지합니다."
                                     >
-                                      비활성화
+                                      정지하기
                                     </button>
                                   )}
                                   <button

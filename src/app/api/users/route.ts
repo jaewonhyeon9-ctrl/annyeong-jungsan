@@ -58,7 +58,10 @@ export async function POST(request: Request) {
 
   if (!supabaseUrl || !supabaseAnon || !serviceRoleKey) {
     return NextResponse.json(
-      { error: "Supabase 환경변수가 설정되지 않았습니다." },
+      {
+        error:
+          "SUPABASE_SERVICE_ROLE_KEY가 설정되지 않았습니다. Supabase Dashboard > Project Settings > API에서 service_role 키를 .env.local에 추가해주세요.",
+      },
       { status: 500 }
     );
   }
@@ -157,4 +160,74 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json(rowToProfile(profile));
+}
+
+export async function PATCH(request: Request) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseAnon || !serviceRoleKey) {
+    return NextResponse.json(
+      {
+        error:
+          "SUPABASE_SERVICE_ROLE_KEY가 설정되지 않았습니다. Supabase Dashboard > Project Settings > API에서 service_role 키를 .env.local에 추가해주세요.",
+      },
+      { status: 500 }
+    );
+  }
+
+  const input = (await request.json()) as {
+    id?: string;
+    password?: string;
+  };
+  if (!input.id || !input.password) {
+    return badRequest("사용자 ID와 새 비밀번호가 필요합니다.");
+  }
+  if (input.password.length < 6) {
+    return badRequest("비밀번호는 최소 6자 이상이어야 합니다.");
+  }
+
+  const cookieStore = await cookies();
+  const supabase = createServerClient(supabaseUrl, supabaseAnon, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll() {
+        // Route handlers do not need to mutate auth cookies here.
+      },
+    },
+  });
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (profile?.role !== "admin") {
+    return NextResponse.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
+  }
+
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+  const { error } = await admin.auth.admin.updateUserById(input.id, {
+    password: input.password,
+  });
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  return NextResponse.json({ ok: true });
 }

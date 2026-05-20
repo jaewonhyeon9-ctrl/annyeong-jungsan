@@ -61,6 +61,7 @@ export interface Database {
           first_visit_date: string;
           inflow_channels: InflowChannelDb[];
           consent: boolean;
+          tags: string[];
           created_at: string;
           updated_at: string;
         };

@@ -327,6 +327,28 @@ export const mockDataSource: DataSource = {
       });
       return clone(updated);
     },
+    async delete(id) {
+      const store = readStore();
+      const hasPatients = store.patients.some((p) => p.centerId === id);
+      if (hasPatients) {
+        throw new Error(
+          "이 지점에 등록된 환자가 있어 삭제할 수 없습니다. 환자를 다른 지점으로 이동하거나 먼저 삭제하세요."
+        );
+      }
+      const hasOwners = store.users.some(
+        (u) => u.centerId === id && u.role === "owner"
+      );
+      if (hasOwners) {
+        throw new Error(
+          "이 지점에 배정된 원장 계정이 있어 삭제할 수 없습니다. 먼저 계정을 다른 지점으로 옮기거나 정지하세요."
+        );
+      }
+      commit((store) => {
+        store.centers = store.centers.filter((c) => c.id !== id);
+        store.entries = store.entries.filter((e) => e.centerId !== id);
+        store.inflows = store.inflows.filter((i) => i.centerId !== id);
+      });
+    },
   },
 
   patients: {
@@ -393,6 +415,10 @@ export const mockDataSource: DataSource = {
           .sort((a, b) => b.visitDate.localeCompare(a.visitDate))
       );
     },
+    async get(id) {
+      const found = readStore().visits.find((v) => v.id === id);
+      return found ? clone(found) : null;
+    },
     async create(input: VisitCreateInput) {
       const visit: Visit = {
         id: `v-${Math.random().toString(36).slice(2, 10)}`,
@@ -403,15 +429,48 @@ export const mockDataSource: DataSource = {
         sales: input.sales,
         productSales: input.productSales ?? [],
         productConsumption: input.productConsumption ?? [],
-        visitMemo: input.visitMemo,
-        beforePhotoUrl: input.beforePhotoUrl,
-        afterPhotoUrl: input.afterPhotoUrl,
+        visitMemo: input.visitMemo ?? undefined,
+        beforePhotoUrl: input.beforePhotoUrl ?? undefined,
+        afterPhotoUrl: input.afterPhotoUrl ?? undefined,
         createdAt: new Date().toISOString(),
       };
       commit((store) => {
         store.visits = [visit, ...store.visits];
       });
       return clone(visit);
+    },
+    async update(id, patch) {
+      const store = readStore();
+      const idx = store.visits.findIndex((v) => v.id === id);
+      if (idx < 0) throw new Error(`visit not found: ${id}`);
+      const current = store.visits[idx];
+      const updated: Visit = {
+        ...current,
+        visitDate: patch.visitDate ?? current.visitDate,
+        partId: patch.partId ?? current.partId,
+        sales: patch.sales ?? current.sales,
+        productSales: patch.productSales ?? current.productSales,
+        productConsumption: patch.productConsumption ?? current.productConsumption,
+        visitMemo:
+          patch.visitMemo !== undefined ? (patch.visitMemo ?? undefined) : current.visitMemo,
+        beforePhotoUrl:
+          patch.beforePhotoUrl !== undefined
+            ? (patch.beforePhotoUrl ?? undefined)
+            : current.beforePhotoUrl,
+        afterPhotoUrl:
+          patch.afterPhotoUrl !== undefined
+            ? (patch.afterPhotoUrl ?? undefined)
+            : current.afterPhotoUrl,
+      };
+      commit((store) => {
+        store.visits[idx] = updated;
+      });
+      return clone(updated);
+    },
+    async delete(id) {
+      commit((store) => {
+        store.visits = store.visits.filter((v) => v.id !== id);
+      });
     },
   },
 

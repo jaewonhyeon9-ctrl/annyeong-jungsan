@@ -104,6 +104,28 @@ export default function AdminServicesPage() {
     else load();
   }
 
+  async function deleteService(r: ServiceRow) {
+    const confirmed = window.confirm(
+      `시술품목 "${r.name}" 을(를) 완전히 삭제하시겠습니까?\n\n` +
+        `과거 방문/매출 기록에서 이 시술명은 그대로 남지만, ` +
+        `목록에서는 사라져 더는 선택할 수 없게 됩니다.\n\n` +
+        `잠시만 숨기려면 "비활성"을 사용하세요. 삭제는 되돌릴 수 없습니다.`
+    );
+    if (!confirmed) return;
+    const sb = createClient();
+    const { error } = await sb.from("services").delete().eq("id", r.id);
+    if (error) {
+      // FK 제약(과거 visit_sale_lines가 참조)으로 실패할 가능성 → 안내
+      alert(
+        `삭제 실패: ${error.message}\n\n` +
+          `과거 매출 기록이 이 시술을 참조하는 경우 삭제할 수 없습니다. ` +
+          `이런 경우 "비활성"을 사용하세요.`
+      );
+      return;
+    }
+    load();
+  }
+
   const partLabel = (id: PartId) => PARTS.find((p) => p.id === id)?.label ?? id;
   const byPart: Record<string, ServiceRow[]> = {};
   for (const r of rows) (byPart[r.part_id] ||= []).push(r);
@@ -209,6 +231,7 @@ export default function AdminServicesPage() {
                       <button onClick={() => toggleActive(r)} className="rounded border border-sand-200 px-2 py-1 text-[11px] hover:border-sand-400">
                         {r.active ? "비활성" : "활성"}
                       </button>
+                      <button onClick={() => deleteService(r)} className="rounded border border-clay-300 px-2 py-1 text-[11px] text-clay-700 hover:bg-clay-500/10" title="완전 삭제">🗑</button>
                     </div>
                   </li>
                 ))}

@@ -18,6 +18,7 @@ export interface PatientCreateInput {
   firstVisitDate: string;
   inflowChannels: Patient["inflowChannels"];
   consent: boolean;
+  tags?: Patient["tags"];
   personal?: Patient["personal"];
   chart?: Patient["chart"];
 }
@@ -30,9 +31,9 @@ export interface VisitCreateInput {
   sales: Visit["sales"];
   productSales?: Visit["productSales"];
   productConsumption?: Visit["productConsumption"];
-  visitMemo?: string;
-  beforePhotoUrl?: string;
-  afterPhotoUrl?: string;
+  visitMemo?: string | null;
+  beforePhotoUrl?: string | null;
+  afterPhotoUrl?: string | null;
 }
 
 export interface CenterCreateInput {
@@ -72,6 +73,7 @@ export interface DataSource {
     current(): Promise<Center | null>;
     create(input: CenterCreateInput): Promise<Center>;
     update(id: string, patch: Partial<Center>): Promise<Center>;
+    delete(id: string): Promise<void>;
   };
   patients: {
     list(centerId?: string): Promise<Patient[]>;
@@ -81,7 +83,10 @@ export interface DataSource {
   };
   visits: {
     listByPatient(patientId: string): Promise<Visit[]>;
+    get(id: string): Promise<Visit | null>;
     create(input: VisitCreateInput): Promise<Visit>;
+    update(id: string, patch: Partial<VisitCreateInput>): Promise<Visit>;
+    delete(id: string): Promise<void>;
   };
   entries: {
     // 방문(Visit) + 수동입력(DailyEntry)을 모두 합산해 일자별 entry로 반환

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { use, useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { getDataSource } from "@/lib/data";
@@ -11,17 +11,21 @@ import { findService, servicesByPart } from "@/lib/services";
 import { PARTS, type Patient, type PartId } from "@/lib/types";
 import { useCurrentProfile } from "@/lib/use-current-profile";
 
-// 환자의 새 방문 차트 작성 — 시술/결제 + 진료 메모 + 사진 (옵션)
+// 환자의 방문 차트 작성/수정 — 시술/결제 + 진료 메모 + 사진 (옵션)
+// ?edit=<visitId> 파라미터가 있으면 해당 visit을 불러와 수정 모드로 전환.
 
 type SaleDraft = Record<string, { cash: number; card: number }>;
 
-export default function NewVisitChartPage({
+export default function VisitChartPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editVisitId = searchParams.get("edit");
+  const isEdit = Boolean(editVisitId);
   const { profile } = useCurrentProfile();
 
   const visibleParts = useMemo(
@@ -36,28 +40,8 @@ export default function NewVisitChartPage({
   const [visitNumber, setVisitNumber] = useState(1);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const data = await getDataSource();
-      const p = await data.patients.get(id);
-      const visits = p ? await data.visits.listByPatient(id) : [];
-      if (!cancelled) {
-        setPatient(p);
-        setVisitNumber(visits.length + 1);
-        setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [id]);
-
   const [visitDate, setVisitDate] = useState(todayKST());
   const [partId, setPartId] = useState<PartId>("scalp");
-  useEffect(() => {
-    if (profile?.role === "owner" && profile.partId) setPartId(profile.partId);
-  }, [profile]);
   const [draft, setDraft] = useState<SaleDraft>({});
   const [memo, setMemo] = useState("");
   const [saving, setSaving] = useState(false);
@@ -65,6 +49,52 @@ export default function NewVisitChartPage({
   const [afterPhoto, setAfterPhoto] = useState<string | null>(null);
   const beforeRef = useRef<HTMLInputElement>(null);
   const afterRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const data = await getDataSource();
+      const p = await data.patients.get(id);
+      const visits = p ? await data.visits.listByPatient(id) : [];
+      if (cancelled) return;
+
+      setPatient(p);
+
+      if (isEdit && editVisitId) {
+        // 수정 모드 — 기존 visit 데이터로 폼 채우기
+        const visit = await data.visits.get(editVisitId);
+        if (visit && !cancelled) {
+          setVisitDate(visit.visitDate);
+          setPartId(visit.partId);
+          const d: SaleDraft = {};
+          for (const s of visit.sales) {
+            d[s.serviceId] = { cash: s.cash, card: s.card };
+          }
+          setDraft(d);
+          setMemo(visit.visitMemo ?? "");
+          setBeforePhoto(visit.beforePhotoUrl ?? null);
+          setAfterPhoto(visit.afterPhotoUrl ?? null);
+          // 회차 — 이 visit이 몇 번째인지
+          const sortedAsc = [...visits].sort((a, b) =>
+            a.visitDate.localeCompare(b.visitDate)
+          );
+          const idx = sortedAsc.findIndex((v) => v.id === editVisitId);
+          setVisitNumber(idx >= 0 ? idx + 1 : visits.length);
+        }
+      } else {
+        setVisitNumber(visits.length + 1);
+      }
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, isEdit, editVisitId]);
+
+  useEffect(() => {
+    if (!isEdit && profile?.role === "owner" && profile.partId)
+      setPartId(profile.partId);
+  }, [profile, isEdit]);
 
   async function onPhotoPicked(
     file: File,
@@ -105,28 +135,60 @@ export default function NewVisitChartPage({
     setSaving(true);
     try {
       const data = await getDataSource();
-      await data.visits.create({
-        patientId: patient.id,
-        centerId: patient.centerId,
-        visitDate,
-        partId,
-        sales: filled.map(([serviceId, v]) => {
-          const svc = findService(serviceId)!;
-          return {
-            serviceId,
-            serviceName: svc.name,
-            partId: svc.partId,
-            cash: v.cash,
-            card: v.card,
-          };
-        }),
-        visitMemo: memo || undefined,
-        beforePhotoUrl: beforePhoto ?? undefined,
-        afterPhotoUrl: afterPhoto ?? undefined,
+      const sales = filled.map(([serviceId, v]) => {
+        const svc = findService(serviceId)!;
+        return {
+          serviceId,
+          serviceName: svc.name,
+          partId: svc.partId,
+          cash: v.cash,
+          card: v.card,
+        };
       });
+      if (isEdit && editVisitId) {
+        // null 을 명시적으로 보내야 DB 의 기존 값을 지울 수 있다.
+        // undefined 는 update 에서 "변경 안 함" 으로 해석되어 빈 값이 저장되지 않는다.
+        await data.visits.update(editVisitId, {
+          visitDate,
+          partId,
+          sales,
+          visitMemo: memo.trim() ? memo : null,
+          beforePhotoUrl: beforePhoto,
+          afterPhotoUrl: afterPhoto,
+        });
+      } else {
+        await data.visits.create({
+          patientId: patient.id,
+          centerId: patient.centerId,
+          visitDate,
+          partId,
+          sales,
+          visitMemo: memo || undefined,
+          beforePhotoUrl: beforePhoto ?? undefined,
+          afterPhotoUrl: afterPhoto ?? undefined,
+        });
+      }
       router.push(`/owner/patients/${patient.id}`);
     } catch (err) {
       alert(`저장 실패: ${err instanceof Error ? err.message : String(err)}`);
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!patient || !editVisitId) return;
+    const confirmed = window.confirm(
+      `${visitNumber}회차 방문 차트(${visitDate})를 삭제하시겠습니까?\n\n` +
+        `이 작업은 되돌릴 수 없으며, 해당 매출이 정산에서 빠집니다.`
+    );
+    if (!confirmed) return;
+    setSaving(true);
+    try {
+      const data = await getDataSource();
+      await data.visits.delete(editVisitId);
+      router.push(`/owner/patients/${patient.id}`);
+    } catch (err) {
+      alert(`삭제 실패: ${err instanceof Error ? err.message : String(err)}`);
       setSaving(false);
     }
   }
@@ -163,7 +225,7 @@ export default function NewVisitChartPage({
             ←
           </Link>
           <div className="text-sm font-semibold text-sand-800">
-            {visitNumber}회차 방문 차트
+            {visitNumber}회차 방문 차트{isEdit ? " (수정)" : ""}
           </div>
           <div className="w-4" />
         </div>
@@ -366,8 +428,19 @@ export default function NewVisitChartPage({
           disabled={saving}
           className="w-full rounded-2xl bg-sand-800 px-5 py-4 text-base font-semibold text-white shadow-md transition hover:bg-sand-900 active:scale-[0.99] disabled:opacity-60"
         >
-          {saving ? "저장 중..." : "방문 차트 저장"}
+          {saving ? "저장 중..." : isEdit ? "수정 완료" : "방문 차트 저장"}
         </button>
+
+        {isEdit && (
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={saving}
+            className="w-full rounded-2xl border border-clay-300 bg-white px-5 py-3 text-sm font-semibold text-clay-700 transition hover:bg-clay-500/10 disabled:opacity-60"
+          >
+            🗑 이 방문 차트 삭제
+          </button>
+        )}
 
         <p className="px-1 text-center text-[11px] text-sand-500">
           저장된 시술/결제는 일일 매출에 자동 반영되며 월말 정산에 합산됩니다.

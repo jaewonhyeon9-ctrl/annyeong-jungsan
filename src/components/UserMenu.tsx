@@ -29,10 +29,10 @@ export function UserMenu() {
   }
 
   async function handleChangePassword() {
-    const pwd = prompt("새 비밀번호를 입력하세요 (4자 이상):");
+    const pwd = prompt("새 비밀번호를 입력하세요 (6자 이상):");
     if (!pwd) return;
-    if (pwd.length < 4) {
-      alert("비밀번호는 최소 4자 이상이어야 합니다.");
+    if (pwd.length < 6) {
+      alert("비밀번호는 최소 6자 이상이어야 합니다.");
       return;
     }
     const confirm = prompt("확인을 위해 한 번 더 입력하세요:");

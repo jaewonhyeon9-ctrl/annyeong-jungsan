@@ -94,6 +94,7 @@ create table public.patients (
   first_visit_date  date not null,
   inflow_channels   inflow_channel[] not null default '{}',
   consent           boolean not null default false,
+  tags              text[] not null default '{}',
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now()
 );

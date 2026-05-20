@@ -90,47 +90,23 @@ export default function SignupPage() {
 
     setSubmitting(true);
     try {
-      if (isSupabaseActive) {
-        // Supabase 모드: sb.auth.signUp 으로 가입 → DB 트리거가 profile 자동 생성 (active=false)
-        const { createClient } = await import("@/lib/supabase/client");
-        const sb = createClient();
-        const { error: signUpError } = await sb.auth.signUp({
-          email: email.trim(),
-          password,
-          options: {
-            data: {
-              display_name: displayName.trim(),
-              center_id: centerId,
-              part_id: partId,
-              phone: phone.trim() || undefined,
-              bank_name: bank,
-              bank_account: accountNumber.trim(),
-              bank_holder: accountHolder.trim() || displayName.trim(),
-              business_number: businessNumber.trim() || undefined,
-            },
-          },
-        });
-        if (signUpError) throw signUpError;
-        await sb.auth.signOut();
-      } else {
-        const data = await getDataSource();
-        await data.users.create({
-          email: email.trim(),
-          password,
-          displayName: displayName.trim(),
-          role: "owner",
-          centerId,
-          partId: partId as PartId,
-          phone: phone.trim() || undefined,
-          bankAccount: {
-            bank,
-            accountNumber: accountNumber.trim(),
-            holder: accountHolder.trim() || displayName.trim(),
-          },
-          businessNumber: businessNumber.trim() || undefined,
-          active: false,
-        });
-      }
+      const data = await getDataSource();
+      await data.users.create({
+        email: email.trim(),
+        password,
+        displayName: displayName.trim(),
+        role: "owner",
+        centerId,
+        partId: partId as PartId,
+        phone: phone.trim() || undefined,
+        bankAccount: {
+          bank,
+          accountNumber: accountNumber.trim(),
+          holder: accountHolder.trim() || displayName.trim(),
+        },
+        businessNumber: businessNumber.trim() || undefined,
+        active: false,
+      });
       setDone(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
