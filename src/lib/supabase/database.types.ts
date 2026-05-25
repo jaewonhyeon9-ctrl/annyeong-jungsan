@@ -39,6 +39,7 @@ export interface Database {
           "id" | "created_at"
         > & { id?: string; created_at?: string };
         Update: Partial<Database["public"]["Tables"]["centers"]["Insert"]>;
+        Relationships: [];
       };
       profiles: {
         Row: {
@@ -53,6 +54,7 @@ export interface Database {
           "created_at"
         > & { created_at?: string };
         Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
+        Relationships: [];
       };
       patients: {
         Row: {
@@ -70,6 +72,7 @@ export interface Database {
           "created_at" | "updated_at"
         > & { created_at?: string; updated_at?: string };
         Update: Partial<Database["public"]["Tables"]["patients"]["Insert"]>;
+        Relationships: [];
       };
       visits: {
         Row: {
@@ -92,6 +95,7 @@ export interface Database {
           "id" | "created_at"
         > & { id?: string; created_at?: string };
         Update: Partial<Database["public"]["Tables"]["visits"]["Insert"]>;
+        Relationships: [];
       };
       daily_entries: {
         Row: {
@@ -114,6 +118,7 @@ export interface Database {
         Update: Partial<
           Database["public"]["Tables"]["daily_entries"]["Insert"]
         >;
+        Relationships: [];
       };
       inflow_entries: {
         Row: {
@@ -142,6 +147,7 @@ export interface Database {
         Update: Partial<
           Database["public"]["Tables"]["inflow_entries"]["Insert"]
         >;
+        Relationships: [];
       };
       settlement_rules: {
         Row: {
@@ -160,6 +166,121 @@ export interface Database {
         Update: Partial<
           Database["public"]["Tables"]["settlement_rules"]["Insert"]
         >;
+        Relationships: [];
+      };
+      services: {
+        Row: {
+          id: string;
+          part_id: PartId;
+          name: string;
+          default_price: number;
+          active: boolean;
+          sort_order: number;
+        };
+        Insert: {
+          id: string;
+          part_id: PartId;
+          name: string;
+          default_price?: number;
+          active?: boolean;
+          sort_order?: number;
+        };
+        Update: {
+          id?: string;
+          part_id?: PartId;
+          name?: string;
+          default_price?: number;
+          active?: boolean;
+          sort_order?: number;
+        };
+        Relationships: [];
+      };
+      products: {
+        Row: {
+          id: string;
+          name: string;
+          default_price: number;
+          kind: "sale" | "consumable" | "both";
+          active: boolean;
+        };
+        Insert: {
+          id: string;
+          name: string;
+          default_price?: number;
+          kind?: "sale" | "consumable" | "both";
+          active?: boolean;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          default_price?: number;
+          kind?: "sale" | "consumable" | "both";
+          active?: boolean;
+        };
+        Relationships: [];
+      };
+      symptom_master: {
+        Row: {
+          id: string;
+          part_id: PartId;
+          category: string;
+          label: string;
+          value: string;
+          active: boolean;
+          sort_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          part_id: PartId;
+          category: string;
+          label: string;
+          value: string;
+          active?: boolean;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          part_id?: PartId;
+          category?: string;
+          label?: string;
+          value?: string;
+          active?: boolean;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      homecare_master: {
+        Row: {
+          id: string;
+          part_id: PartId | null;
+          name: string;
+          instruction: string | null;
+          active: boolean;
+          sort_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          part_id?: PartId | null;
+          name: string;
+          instruction?: string | null;
+          active?: boolean;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          part_id?: PartId | null;
+          name?: string;
+          instruction?: string | null;
+          active?: boolean;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Relationships: [];
       };
     };
     Views: Record<string, never>;
