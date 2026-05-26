@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
-import { getDataSource } from "@/lib/data";
+import { getDataSource, isSupabaseActive } from "@/lib/data";
 import { fmtDate } from "@/lib/format";
 import {
   isProfileComplete,
@@ -113,18 +113,46 @@ export default function AdminCentersPage() {
     const owners = users.filter(
       (u) => u.centerId === center.id && u.role === "owner"
     );
-    if (owners.length > 0) {
-      alert(
-        `이 지점에 배정된 원장 계정이 ${owners.length}개 있습니다. 먼저 계정을 정지하거나 다른 지점으로 옮긴 뒤 삭제하세요.`
-      );
-      return;
-    }
+    const ownerNote =
+      owners.length > 0
+        ? `\n· 배정된 원장 계정 ${owners.length}개도 함께 삭제됩니다.`
+        : "";
     const confirmed = window.confirm(
-      `지점 "${center.name}" 을(를) 정말 삭제하시겠습니까?\n\n` +
-        `이 지점에 등록된 환자가 있으면 삭제되지 않습니다.\n` +
-        `이 작업은 되돌릴 수 없습니다.`
+      `지점 "${center.name}" 을(를) 강제 삭제하시겠습니까?\n\n` +
+        `· 이 지점의 모든 환자/방문/매출/유입 데이터가 삭제됩니다.${ownerNote}\n` +
+        `· 이 작업은 되돌릴 수 없습니다.`
     );
     if (!confirmed) return;
+
+    // Supabase 모드: 비밀번호 재확인 후 service_role 로 강제 삭제
+    if (isSupabaseActive) {
+      const password = window.prompt(
+        `보안 확인 — 본인(법인 관리자) 비밀번호를 입력하세요:`
+      );
+      if (!password) return;
+      try {
+        const res = await fetch(`/api/centers/delete`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ centerId: center.id, password }),
+        });
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        if (!res.ok) {
+          throw new Error(json.error ?? "삭제 실패");
+        }
+        await load();
+        alert(`지점 "${center.name}" 이(가) 삭제되었습니다.`);
+      } catch (err) {
+        alert(
+          `삭제 실패: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+      return;
+    }
+
+    // Mock 모드: localStorage 데이터 소스 사용 (비밀번호 검증 없음)
     try {
       const data = await getDataSource();
       await data.centers.delete(center.id);
@@ -487,9 +515,9 @@ ${center.name} ${partLabel(partId)} 파트 BeautyChain 정산앱 계정이 발�
                                     {!owner.active ? (
                                       <span
                                         className="rounded bg-clay-500/20 px-2 py-0.5 text-[10px] font-bold text-clay-700"
-                                        title="가입 신청 접수 — 승인 필요"
+                                        title="비활성 상태 — 로그인 불가. '활성화' 버튼으로 풀 수 있습니다."
                                       >
-                                        ⏳ 승인 대기
+                                        🚫 정지됨
                                       </span>
                                     ) : isProfileComplete(owner) ? (
                                       <span
@@ -531,17 +559,18 @@ ${center.name} ${partLabel(partId)} 파트 BeautyChain 정산앱 계정이 발�
                                       type="button"
                                       onClick={() => toggleActive(owner)}
                                       className="flex-1 rounded bg-moss-500 px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-moss-600"
+                                      title="이 계정의 로그인을 허용합니다."
                                     >
-                                      ✓ 승인하기
+                                      ✓ 활성화
                                     </button>
                                   ) : (
                                     <button
                                       type="button"
                                       onClick={() => toggleActive(owner)}
-                                      className="flex-1 rounded border border-sand-200 bg-white px-2 py-1.5 text-[11px] hover:border-sand-400"
-                                      title="이미 승인된 계정입니다. 누르면 계정을 정지합니다."
+                                      className="flex-1 rounded border border-clay-300 bg-white px-2 py-1.5 text-[11px] text-clay-700 hover:bg-clay-500/10"
+                                      title="이 계정의 로그인을 차단합니다. 다시 풀려면 '활성화' 버튼을 누르세요."
                                     >
-                                      정지하기
+                                      🚫 정지하기
                                     </button>
                                   )}
                                   <button

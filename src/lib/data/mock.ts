@@ -328,25 +328,22 @@ export const mockDataSource: DataSource = {
       return clone(updated);
     },
     async delete(id) {
-      const store = readStore();
-      const hasPatients = store.patients.some((p) => p.centerId === id);
-      if (hasPatients) {
-        throw new Error(
-          "이 지점에 등록된 환자가 있어 삭제할 수 없습니다. 환자를 다른 지점으로 이동하거나 먼저 삭제하세요."
-        );
-      }
-      const hasOwners = store.users.some(
-        (u) => u.centerId === id && u.role === "owner"
-      );
-      if (hasOwners) {
-        throw new Error(
-          "이 지점에 배정된 원장 계정이 있어 삭제할 수 없습니다. 먼저 계정을 다른 지점으로 옮기거나 정지하세요."
-        );
-      }
+      // 강제 삭제 — 환자/방문/매출/유입/배정 원장계정 모두 cascade.
+      // Supabase 측 API 흐름과 동일한 의미(UI confirm 텍스트와 일치).
       commit((store) => {
-        store.centers = store.centers.filter((c) => c.id !== id);
+        const patientIds = new Set(
+          store.patients.filter((p) => p.centerId === id).map((p) => p.id)
+        );
+        store.patients = store.patients.filter((p) => p.centerId !== id);
+        store.visits = store.visits.filter(
+          (v) => v.centerId !== id && !patientIds.has(v.patientId)
+        );
         store.entries = store.entries.filter((e) => e.centerId !== id);
         store.inflows = store.inflows.filter((i) => i.centerId !== id);
+        store.users = store.users.filter(
+          (u) => !(u.role === "owner" && u.centerId === id)
+        );
+        store.centers = store.centers.filter((c) => c.id !== id);
       });
     },
   },
