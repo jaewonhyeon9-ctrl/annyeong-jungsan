@@ -33,12 +33,111 @@ export const SERVICES: Service[] = [
   { id: "skin.massage", partId: "skincare", name: "마사지", defaultPrice: 80000 },
 ];
 
+// ----- Custom services (원장이 등록한 시술) -----
+// 브라우저 localStorage 에 영속화. SSR 안전.
+
+export interface CustomService extends Service {
+  active: boolean;
+  sortOrder?: number;
+  createdBy?: string; // userId
+  createdAt?: string;
+}
+
+const CUSTOM_SERVICES_KEY = "annyeong-custom-services-v1";
+
+let customServices: CustomService[] = [];
+let customLoaded = false;
+
+function loadCustomServices(): void {
+  if (customLoaded) return;
+  if (typeof window === "undefined") return;
+  customLoaded = true;
+  try {
+    const raw = window.localStorage.getItem(CUSTOM_SERVICES_KEY);
+    if (raw) customServices = JSON.parse(raw) as CustomService[];
+  } catch {
+    customServices = [];
+  }
+}
+
+function persistCustomServices(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      CUSTOM_SERVICES_KEY,
+      JSON.stringify(customServices)
+    );
+  } catch {
+    // private mode 등 — 메모리는 유지
+  }
+}
+
+export function getCustomServices(): CustomService[] {
+  loadCustomServices();
+  return [...customServices];
+}
+
+export function isBuiltinService(id: string): boolean {
+  return SERVICES.some((s) => s.id === id);
+}
+
+export function addCustomService(
+  input: Omit<CustomService, "active" | "createdAt"> & { active?: boolean }
+): CustomService {
+  loadCustomServices();
+  if (customServices.some((s) => s.id === input.id) || isBuiltinService(input.id)) {
+    throw new Error(`이미 사용 중인 ID 입니다: ${input.id}`);
+  }
+  const created: CustomService = {
+    id: input.id,
+    partId: input.partId,
+    name: input.name,
+    defaultPrice: input.defaultPrice,
+    sortOrder: input.sortOrder,
+    createdBy: input.createdBy,
+    active: input.active ?? true,
+    createdAt: new Date().toISOString(),
+  };
+  customServices = [created, ...customServices];
+  persistCustomServices();
+  return created;
+}
+
+export function updateCustomService(
+  id: string,
+  patch: Partial<Omit<CustomService, "id" | "createdAt">>
+): CustomService | null {
+  loadCustomServices();
+  const idx = customServices.findIndex((s) => s.id === id);
+  if (idx < 0) return null;
+  const updated: CustomService = { ...customServices[idx], ...patch };
+  customServices = customServices.map((s, i) => (i === idx ? updated : s));
+  persistCustomServices();
+  return updated;
+}
+
+export function removeCustomService(id: string): boolean {
+  loadCustomServices();
+  const before = customServices.length;
+  customServices = customServices.filter((s) => s.id !== id);
+  if (customServices.length === before) return false;
+  persistCustomServices();
+  return true;
+}
+
 export function servicesByPart(partId: PartId): Service[] {
-  return SERVICES.filter((s) => s.partId === partId);
+  loadCustomServices();
+  const builtin = SERVICES.filter((s) => s.partId === partId);
+  const custom = customServices.filter((s) => s.partId === partId && s.active);
+  return [...builtin, ...custom];
 }
 
 export function findService(id: string): Service | undefined {
-  return SERVICES.find((s) => s.id === id);
+  loadCustomServices();
+  return (
+    SERVICES.find((s) => s.id === id) ||
+    customServices.find((s) => s.id === id)
+  );
 }
 
 // 제품 카탈로그 (두피 파트 — 엑셀 기준)

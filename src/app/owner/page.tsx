@@ -527,8 +527,8 @@ export default function OwnerHome() {
         )}
       </Card>
 
-      {/* 환자 관리 / 유입 */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* 환자 관리 / 유입 / 시술 품목 */}
+      <div className="grid grid-cols-3 gap-3">
         <Link
           href="/owner/patients"
           className="rounded-2xl border border-sand-200 bg-white/70 px-4 py-4 text-center"
@@ -544,6 +544,14 @@ export default function OwnerHome() {
           <div className="text-xl">📈</div>
           <div className="mt-1 text-sm font-semibold text-sand-800">월별 유입</div>
           <div className="text-[11px] text-sand-500">유입경로 · 신규환자</div>
+        </Link>
+        <Link
+          href="/owner/services"
+          className="rounded-2xl border border-sand-200 bg-white/70 px-4 py-4 text-center"
+        >
+          <div className="text-xl">🧾</div>
+          <div className="mt-1 text-sm font-semibold text-sand-800">시술 품목</div>
+          <div className="text-[11px] text-sand-500">등록 · 수정 · 비활성</div>
         </Link>
       </div>
 
