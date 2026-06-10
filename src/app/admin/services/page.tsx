@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
+import { invalidateServicesCache } from "@/lib/services";
 import { PARTS, type PartId } from "@/lib/types";
 
 type ServiceRow = {
@@ -85,6 +86,7 @@ export default function AdminServicesPage() {
         ? await sb.from("services").update(payload).eq("id", editingId)
         : await sb.from("services").insert(payload);
       if (error) throw error;
+      invalidateServicesCache();
       reset();
       await load();
     } catch (err) {
@@ -101,7 +103,10 @@ export default function AdminServicesPage() {
       .update({ active: !r.active })
       .eq("id", r.id);
     if (error) alert(error.message);
-    else load();
+    else {
+      invalidateServicesCache();
+      load();
+    }
   }
 
   async function deleteService(r: ServiceRow) {
@@ -123,6 +128,7 @@ export default function AdminServicesPage() {
       );
       return;
     }
+    invalidateServicesCache();
     load();
   }
 

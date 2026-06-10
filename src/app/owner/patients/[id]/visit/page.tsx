@@ -7,7 +7,7 @@ import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { getDataSource } from "@/lib/data";
 import { fmtWon, todayKST } from "@/lib/format";
 import { resizeToDataUrl } from "@/lib/image";
-import { findService, servicesByPart } from "@/lib/services";
+import { useServicesByPart, useAllServices } from "@/lib/services";
 import { PARTS, type Patient, type PartId } from "@/lib/types";
 import { useCurrentProfile } from "@/lib/use-current-profile";
 
@@ -27,6 +27,7 @@ export default function VisitChartPage({
   const editVisitId = searchParams.get("edit");
   const isEdit = Boolean(editVisitId);
   const { profile } = useCurrentProfile();
+  const { services: allServices } = useAllServices();
 
   const visibleParts = useMemo(
     () =>
@@ -136,7 +137,8 @@ export default function VisitChartPage({
     try {
       const data = await getDataSource();
       const sales = filled.map(([serviceId, v]) => {
-        const svc = findService(serviceId)!;
+        const svc = allServices.find((s) => s.id === serviceId);
+        if (!svc) throw new Error(`알 수 없는 시술 ID: ${serviceId}`);
         return {
           serviceId,
           serviceName: svc.name,
@@ -193,6 +195,8 @@ export default function VisitChartPage({
     }
   }
 
+  const { services } = useServicesByPart(partId);
+
   if (loading) {
     return (
       <div className="mx-auto max-w-md p-6 text-center text-sm text-sand-500">
@@ -211,8 +215,6 @@ export default function VisitChartPage({
       </div>
     );
   }
-
-  const services = servicesByPart(partId);
 
   return (
     <div className="min-h-screen bg-sand-50 pb-32">

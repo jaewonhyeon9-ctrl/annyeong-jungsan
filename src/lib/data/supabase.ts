@@ -30,6 +30,20 @@ import type {
   PatientTag,
   PartId,
   Pregnancy,
+  Consultation,
+  ConsultationCreateInput,
+  ConsultationUpdateInput,
+  LoyaltyCreateInput,
+  LoyaltyEntry,
+  PatientSalesRow,
+  Reservation,
+  ReservationCreateInput,
+  ReservationStatus,
+  ReservationUpdateInput,
+  SalesSummary,
+  ServiceCreateInput,
+  ServiceRecord,
+  ServiceUpdateInput,
   SettlementRule,
   Severity,
   UserProfile,
@@ -267,6 +281,88 @@ function rowToVisit(
     beforePhotoUrl: r.before_photo_url ?? undefined,
     afterPhotoUrl: r.after_photo_url ?? undefined,
     createdAt: r.created_at,
+  };
+}
+
+type RawConsultationRow = {
+  id: string;
+  center_id: string;
+  part_id: PartId | null;
+  patient_id: string;
+  owner_id: string | null;
+  consulted_at: string;
+  content: string;
+  next_followup: string | null;
+  created_at: string;
+  updated_at: string | null;
+  owner?: { display_name: string } | { display_name: string }[] | null;
+  patient_personal?:
+    | { name: string | null }
+    | { name: string | null }[]
+    | null;
+};
+
+function rowToConsultation(r: RawConsultationRow): Consultation {
+  const ownerObj = Array.isArray(r.owner) ? r.owner[0] : r.owner;
+  const ppObj = Array.isArray(r.patient_personal)
+    ? r.patient_personal[0]
+    : r.patient_personal;
+  return {
+    id: r.id,
+    centerId: r.center_id,
+    partId: r.part_id,
+    patientId: r.patient_id,
+    patientName: ppObj?.name ?? undefined,
+    ownerId: r.owner_id,
+    ownerName: ownerObj?.display_name,
+    consultedAt: r.consulted_at,
+    content: r.content,
+    nextFollowup: r.next_followup,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+type RawReservationRow = {
+  id: string;
+  center_id: string;
+  part_id: PartId;
+  owner_id: string | null;
+  patient_id: string | null;
+  patient_name: string | null;
+  patient_phone: string | null;
+  scheduled_at: string;
+  duration_min: number;
+  service_id: string | null;
+  service_name: string | null;
+  status: ReservationStatus;
+  memo: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string | null;
+  owner?: { display_name: string } | { display_name: string }[] | null;
+};
+
+function rowToReservation(r: RawReservationRow): Reservation {
+  const ownerObj = Array.isArray(r.owner) ? r.owner[0] : r.owner;
+  return {
+    id: r.id,
+    centerId: r.center_id,
+    partId: r.part_id,
+    ownerId: r.owner_id,
+    ownerName: ownerObj?.display_name,
+    patientId: r.patient_id,
+    patientName: r.patient_name,
+    patientPhone: r.patient_phone,
+    scheduledAt: r.scheduled_at,
+    durationMin: r.duration_min,
+    serviceId: r.service_id,
+    serviceName: r.service_name,
+    status: r.status,
+    memo: r.memo,
+    createdBy: r.created_by,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
   };
 }
 
@@ -604,35 +700,62 @@ export const supabaseDataSource: DataSource = {
 
       const month = input.firstVisitDate.slice(0, 7);
       let id = input.id;
-      if (!id) {
-        // 클라이언트 측 ID 발급 — 동월 시퀀스 조회
-        const { data: existing } = await sb
+
+      // ID 충돌 시 최대 5회 재시도 (동시 가입 경합 방지)
+      let data: {
+        id: string;
+        center_id: string;
+        first_visit_date: string;
+        inflow_channels: Patient["inflowChannels"];
+        consent: boolean;
+        tags: string[];
+        created_at: string;
+        updated_at: string | null;
+      } | null = null;
+      let lastError: { code?: string; message: string } | null = null;
+      const maxAttempts = id ? 1 : 5;
+
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        if (!input.id) {
+          const { data: existing } = await sb
+            .from("patients")
+            .select("id")
+            .eq("center_id", input.centerId)
+            .like("id", `C%-${month.slice(2, 4)}${month.slice(5, 7)}-%`);
+          const fakeList = ((existing ?? []) as { id: string }[]).map((e) => ({
+            id: e.id,
+          })) as unknown as Patient[];
+          // 충돌 발생 시 attempt 만큼 더 건너뜀
+          id = generateNextPatientId(fakeList, 1 + attempt, month);
+        }
+
+        const insertResult = await sb
           .from("patients")
-          .select("id")
-          .eq("center_id", input.centerId)
-          .like(
-            "id",
-            `C%-${month.slice(2, 4)}${month.slice(5, 7)}-%`
-          );
-        const fakeList = ((existing ?? []) as { id: string }[]).map((e) => ({
-          id: e.id,
-        })) as unknown as Patient[];
-        id = generateNextPatientId(fakeList, 1, month);
+          .insert({
+            id,
+            center_id: input.centerId,
+            first_visit_date: input.firstVisitDate,
+            inflow_channels: input.inflowChannels,
+            consent: input.consent,
+            tags: input.tags ?? [],
+          })
+          .select(
+            "id, center_id, first_visit_date, inflow_channels, consent, tags, created_at, updated_at"
+          )
+          .single();
+
+        if (!insertResult.error) {
+          data = insertResult.data as typeof data;
+          break;
+        }
+        lastError = insertResult.error;
+        // 23505 = unique_violation. 다른 에러는 재시도 의미 없음.
+        if (insertResult.error.code !== "23505") break;
+        // 짧은 백오프
+        await new Promise((r) => setTimeout(r, 100 + attempt * 100));
       }
 
-      const { data, error } = await sb
-        .from("patients")
-        .insert({
-          id,
-          center_id: input.centerId,
-          first_visit_date: input.firstVisitDate,
-          inflow_channels: input.inflowChannels,
-          consent: input.consent,
-          tags: input.tags ?? [],
-        })
-        .select("id, center_id, first_visit_date, inflow_channels, consent, tags, created_at, updated_at")
-        .single();
-      if (error) throw error;
+      if (!data) throw lastError ?? new Error("환자 등록 실패");
 
       // 개인정보 별도 테이블
       if (input.personal) {
@@ -873,6 +996,11 @@ export const supabaseDataSource: DataSource = {
   entries: {
     async byMonth(centerId, yearMonth) {
       const sb = createClient();
+      const [yy, mm] = yearMonth.split("-").map(Number);
+      const nextYm =
+        mm === 12
+          ? `${yy + 1}-01-01`
+          : `${yy}-${String(mm + 1).padStart(2, "0")}-01`;
 
       // 1) 수동 입력 entries + sale_lines
       const { data: entryRows, error: entryErr } = await sb
@@ -880,7 +1008,7 @@ export const supabaseDataSource: DataSource = {
         .select("id, center_id, entry_date, note, created_at")
         .eq("center_id", centerId)
         .gte("entry_date", `${yearMonth}-01`)
-        .lte("entry_date", `${yearMonth}-31`);
+        .lt("entry_date", nextYm);
       if (entryErr) throw entryErr;
 
       const entryIds = ((entryRows ?? []) as { id: string }[]).map((r) => r.id);
@@ -935,7 +1063,7 @@ export const supabaseDataSource: DataSource = {
         .select("id, center_id, visit_date, created_at")
         .eq("center_id", centerId)
         .gte("visit_date", `${yearMonth}-01`)
-        .lte("visit_date", `${yearMonth}-31`);
+        .lt("visit_date", nextYm);
       if (visitErr) throw visitErr;
 
       const visitIds = ((visitRows ?? []) as { id: string }[]).map((r) => r.id);
@@ -1075,6 +1203,526 @@ export const supabaseDataSource: DataSource = {
         .single();
       if (error) throw error;
       return rowToInflow(data);
+    },
+  },
+
+  services: {
+    async list(): Promise<ServiceRecord[]> {
+      const sb = createClient();
+      const { data, error } = await sb
+        .from("services")
+        .select("id, part_id, name, default_price, active, sort_order")
+        .order("sort_order")
+        .order("name");
+      if (error) throw error;
+      return ((data ?? []) as Array<{
+        id: string;
+        part_id: PartId;
+        name: string;
+        default_price: number;
+        active: boolean;
+        sort_order: number;
+      }>).map((r) => ({
+        id: r.id,
+        partId: r.part_id,
+        name: r.name,
+        defaultPrice: r.default_price,
+        active: r.active,
+        sortOrder: r.sort_order,
+      }));
+    },
+    async create(input: ServiceCreateInput): Promise<ServiceRecord> {
+      const sb = createClient();
+      const id =
+        input.id?.trim() ||
+        `${input.partId}.${input.name
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9가-힣]+/g, "_")
+          .replace(/^_+|_+$/g, "") || `svc_${Date.now().toString(36)}`}`;
+      const { data, error } = await sb
+        .from("services")
+        .insert({
+          id,
+          part_id: input.partId,
+          name: input.name.trim(),
+          default_price: input.defaultPrice,
+          active: input.active ?? true,
+          sort_order: input.sortOrder ?? 0,
+        })
+        .select("id, part_id, name, default_price, active, sort_order")
+        .single();
+      if (error) throw error;
+      return {
+        id: data.id,
+        partId: data.part_id,
+        name: data.name,
+        defaultPrice: data.default_price,
+        active: data.active,
+        sortOrder: data.sort_order,
+      };
+    },
+    async update(id, patch: ServiceUpdateInput): Promise<ServiceRecord> {
+      const sb = createClient();
+      const update: Record<string, unknown> = {};
+      if (patch.name !== undefined) update.name = patch.name;
+      if (patch.defaultPrice !== undefined)
+        update.default_price = patch.defaultPrice;
+      if (patch.sortOrder !== undefined) update.sort_order = patch.sortOrder;
+      if (patch.active !== undefined) update.active = patch.active;
+      const { data, error } = await sb
+        .from("services")
+        .update(update)
+        .eq("id", id)
+        .select("id, part_id, name, default_price, active, sort_order")
+        .single();
+      if (error) throw error;
+      return {
+        id: data.id,
+        partId: data.part_id,
+        name: data.name,
+        defaultPrice: data.default_price,
+        active: data.active,
+        sortOrder: data.sort_order,
+      };
+    },
+    async delete(id) {
+      const sb = createClient();
+      const { error } = await sb.from("services").delete().eq("id", id);
+      if (error) throw error;
+    },
+  },
+
+  reservations: {
+    async byMonth(centerId, yearMonth): Promise<Reservation[]> {
+      const sb = createClient();
+      // KST(+09) 자정 기준으로 범위 산출 → UTC ISO로 변환
+      const [y, m] = yearMonth.split("-").map(Number);
+      // KST 자정 = UTC 전날 15시
+      const startUtc = new Date(Date.UTC(y, m - 1, 1, -9, 0, 0)).toISOString();
+      const endUtc = new Date(Date.UTC(y, m, 1, -9, 0, 0)).toISOString();
+      const { data, error } = await sb
+        .from("reservations")
+        .select(
+          `id, center_id, part_id, owner_id, patient_id, patient_name,
+           patient_phone, scheduled_at, duration_min, service_id, service_name,
+           status, memo, created_by, created_at, updated_at,
+           owner:profiles!reservations_owner_id_fkey(display_name)`
+        )
+        .eq("center_id", centerId)
+        .gte("scheduled_at", startUtc)
+        .lt("scheduled_at", endUtc)
+        .order("scheduled_at");
+      if (error) throw error;
+      return ((data ?? []) as Array<RawReservationRow>).map(rowToReservation);
+    },
+    async byDate(centerId, date): Promise<Reservation[]> {
+      const sb = createClient();
+      // KST 해당 날짜 00:00 ~ 다음날 00:00 (UTC로 환산)
+      const [y, m, d] = date.split("-").map(Number);
+      const startUtc = new Date(Date.UTC(y, m - 1, d, -9, 0, 0)).toISOString();
+      const endUtc = new Date(Date.UTC(y, m - 1, d + 1, -9, 0, 0)).toISOString();
+      const { data, error } = await sb
+        .from("reservations")
+        .select(
+          `id, center_id, part_id, owner_id, patient_id, patient_name,
+           patient_phone, scheduled_at, duration_min, service_id, service_name,
+           status, memo, created_by, created_at, updated_at,
+           owner:profiles!reservations_owner_id_fkey(display_name)`
+        )
+        .eq("center_id", centerId)
+        .gte("scheduled_at", startUtc)
+        .lt("scheduled_at", endUtc)
+        .order("scheduled_at");
+      if (error) throw error;
+      return ((data ?? []) as Array<RawReservationRow>).map(rowToReservation);
+    },
+    async create(input: ReservationCreateInput): Promise<Reservation> {
+      const sb = createClient();
+      const { data, error } = await sb
+        .from("reservations")
+        .insert({
+          center_id: input.centerId,
+          part_id: input.partId,
+          owner_id: input.ownerId ?? null,
+          patient_id: input.patientId ?? null,
+          patient_name: input.patientName ?? null,
+          patient_phone: input.patientPhone ?? null,
+          scheduled_at: input.scheduledAt,
+          duration_min: input.durationMin ?? 30,
+          service_id: input.serviceId ?? null,
+          service_name: input.serviceName ?? null,
+          status: input.status ?? "scheduled",
+          memo: input.memo ?? null,
+        })
+        .select(
+          `id, center_id, part_id, owner_id, patient_id, patient_name,
+           patient_phone, scheduled_at, duration_min, service_id, service_name,
+           status, memo, created_by, created_at, updated_at,
+           owner:profiles!reservations_owner_id_fkey(display_name)`
+        )
+        .single();
+      if (error) throw error;
+      return rowToReservation(data as RawReservationRow);
+    },
+    async update(id, patch: ReservationUpdateInput): Promise<Reservation> {
+      const sb = createClient();
+      const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (patch.ownerId !== undefined) update.owner_id = patch.ownerId;
+      if (patch.patientId !== undefined) update.patient_id = patch.patientId;
+      if (patch.patientName !== undefined) update.patient_name = patch.patientName;
+      if (patch.patientPhone !== undefined) update.patient_phone = patch.patientPhone;
+      if (patch.scheduledAt !== undefined) update.scheduled_at = patch.scheduledAt;
+      if (patch.durationMin !== undefined) update.duration_min = patch.durationMin;
+      if (patch.serviceId !== undefined) update.service_id = patch.serviceId;
+      if (patch.serviceName !== undefined) update.service_name = patch.serviceName;
+      if (patch.status !== undefined) update.status = patch.status;
+      if (patch.memo !== undefined) update.memo = patch.memo;
+      const { data, error } = await sb
+        .from("reservations")
+        .update(update)
+        .eq("id", id)
+        .select(
+          `id, center_id, part_id, owner_id, patient_id, patient_name,
+           patient_phone, scheduled_at, duration_min, service_id, service_name,
+           status, memo, created_by, created_at, updated_at,
+           owner:profiles!reservations_owner_id_fkey(display_name)`
+        )
+        .single();
+      if (error) throw error;
+      return rowToReservation(data as RawReservationRow);
+    },
+    async delete(id) {
+      const sb = createClient();
+      const { error } = await sb.from("reservations").delete().eq("id", id);
+      if (error) throw error;
+    },
+  },
+
+  consultations: {
+    async listByPatient(patientId: string): Promise<Consultation[]> {
+      const sb = createClient();
+      const { data, error } = await sb
+        .from("consultations")
+        .select(
+          `id, center_id, part_id, patient_id, owner_id, consulted_at, content,
+           next_followup, created_at, updated_at,
+           owner:profiles!consultations_owner_id_fkey(display_name)`
+        )
+        .eq("patient_id", patientId)
+        .order("consulted_at", { ascending: false });
+      if (error) throw error;
+      return ((data ?? []) as RawConsultationRow[]).map(rowToConsultation);
+    },
+    async listByCenter(centerId: string, limit = 100): Promise<Consultation[]> {
+      const sb = createClient();
+      const { data, error } = await sb
+        .from("consultations")
+        .select(
+          `id, center_id, part_id, patient_id, owner_id, consulted_at, content,
+           next_followup, created_at, updated_at,
+           owner:profiles!consultations_owner_id_fkey(display_name),
+           patient:patients!consultations_patient_id_fkey(personal:patient_personal(name))`
+        )
+        .eq("center_id", centerId)
+        .order("consulted_at", { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      const rows = (data ?? []) as Array<RawConsultationRow & {
+        patient?:
+          | { personal?: { name: string | null } | { name: string | null }[] | null }
+          | Array<{ personal?: { name: string | null } | { name: string | null }[] | null }>
+          | null;
+      }>;
+      return rows.map((r) => {
+        const patientObj = Array.isArray(r.patient) ? r.patient[0] : r.patient;
+        const personalObj = patientObj
+          ? Array.isArray(patientObj.personal)
+            ? patientObj.personal[0]
+            : patientObj.personal
+          : null;
+        return rowToConsultation({
+          ...r,
+          patient_personal: personalObj ?? null,
+        });
+      });
+    },
+    async create(input: ConsultationCreateInput): Promise<Consultation> {
+      const sb = createClient();
+      const { data, error } = await sb
+        .from("consultations")
+        .insert({
+          center_id: input.centerId,
+          part_id: input.partId ?? null,
+          patient_id: input.patientId,
+          owner_id: input.ownerId ?? null,
+          consulted_at: input.consultedAt ?? new Date().toISOString(),
+          content: input.content,
+          next_followup: input.nextFollowup ?? null,
+        })
+        .select(
+          `id, center_id, part_id, patient_id, owner_id, consulted_at, content,
+           next_followup, created_at, updated_at,
+           owner:profiles!consultations_owner_id_fkey(display_name)`
+        )
+        .single();
+      if (error) throw error;
+      return rowToConsultation(data as RawConsultationRow);
+    },
+    async update(
+      id: string,
+      patch: ConsultationUpdateInput
+    ): Promise<Consultation> {
+      const sb = createClient();
+      const update: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      };
+      if (patch.ownerId !== undefined) update.owner_id = patch.ownerId;
+      if (patch.consultedAt !== undefined)
+        update.consulted_at = patch.consultedAt;
+      if (patch.content !== undefined) update.content = patch.content;
+      if (patch.nextFollowup !== undefined)
+        update.next_followup = patch.nextFollowup;
+      const { data, error } = await sb
+        .from("consultations")
+        .update(update)
+        .eq("id", id)
+        .select(
+          `id, center_id, part_id, patient_id, owner_id, consulted_at, content,
+           next_followup, created_at, updated_at,
+           owner:profiles!consultations_owner_id_fkey(display_name)`
+        )
+        .single();
+      if (error) throw error;
+      return rowToConsultation(data as RawConsultationRow);
+    },
+    async delete(id: string) {
+      const sb = createClient();
+      const { error } = await sb.from("consultations").delete().eq("id", id);
+      if (error) throw error;
+    },
+  },
+
+  loyalty: {
+    async historyByPatient(patientId: string): Promise<LoyaltyEntry[]> {
+      const sb = createClient();
+      const { data, error } = await sb
+        .from("loyalty_history")
+        .select("id, patient_id, center_id, delta, reason, balance_after, created_at")
+        .eq("patient_id", patientId)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return ((data ?? []) as Array<{
+        id: string;
+        patient_id: string;
+        center_id: string;
+        delta: number;
+        reason: string | null;
+        balance_after: number;
+        created_at: string;
+      }>).map((r) => ({
+        id: r.id,
+        patientId: r.patient_id,
+        centerId: r.center_id,
+        delta: r.delta,
+        reason: r.reason,
+        balanceAfter: r.balance_after,
+        createdAt: r.created_at,
+      }));
+    },
+    async addEntry(input: LoyaltyCreateInput): Promise<LoyaltyEntry> {
+      const sb = createClient();
+      // 현재 잔액 읽기
+      const { data: p, error: pErr } = await sb
+        .from("patients")
+        .select("loyalty_points")
+        .eq("id", input.patientId)
+        .single();
+      if (pErr) throw pErr;
+      const newBalance = (p?.loyalty_points ?? 0) + input.delta;
+      if (newBalance < 0) throw new Error("적립금이 부족합니다.");
+      // 이력 + 잔액 동시에
+      const { data: hist, error: hErr } = await sb
+        .from("loyalty_history")
+        .insert({
+          patient_id: input.patientId,
+          center_id: input.centerId,
+          delta: input.delta,
+          reason: input.reason ?? null,
+          balance_after: newBalance,
+        })
+        .select("id, patient_id, center_id, delta, reason, balance_after, created_at")
+        .single();
+      if (hErr) throw hErr;
+      const { error: uErr } = await sb
+        .from("patients")
+        .update({ loyalty_points: newBalance })
+        .eq("id", input.patientId);
+      if (uErr) throw uErr;
+      return {
+        id: hist.id,
+        patientId: hist.patient_id,
+        centerId: hist.center_id,
+        delta: hist.delta,
+        reason: hist.reason,
+        balanceAfter: hist.balance_after,
+        createdAt: hist.created_at,
+      };
+    },
+  },
+
+  stats: {
+    async summary(centerId, from, to): Promise<SalesSummary> {
+      const sb = createClient();
+      // 두 출처 합산 — visit_sale_lines + sale_lines, 환자 수는 visits.patient_id distinct
+      const { data: vsl, error: vErr } = await sb
+        .from("visit_sale_lines")
+        .select(
+          `cash, card,
+           visit:visits!inner(id, center_id, visit_date, patient_id)`
+        )
+        .eq("visit.center_id", centerId)
+        .gte("visit.visit_date", from)
+        .lte("visit.visit_date", to);
+      if (vErr) throw vErr;
+      const { data: sl, error: sErr } = await sb
+        .from("sale_lines")
+        .select(
+          `cash, card,
+           entry:daily_entries!inner(id, center_id, entry_date)`
+        )
+        .eq("entry.center_id", centerId)
+        .gte("entry.entry_date", from)
+        .lte("entry.entry_date", to);
+      if (sErr) throw sErr;
+      let totalCash = 0;
+      let totalCard = 0;
+      const visitIds = new Set<string>();
+      const patientIds = new Set<string>();
+      for (const r of (vsl ?? []) as Array<{
+        cash: number;
+        card: number;
+        visit: { id: string; patient_id: string } | { id: string; patient_id: string }[];
+      }>) {
+        totalCash += r.cash;
+        totalCard += r.card;
+        const vv = Array.isArray(r.visit) ? r.visit[0] : r.visit;
+        if (vv) {
+          visitIds.add(vv.id);
+          patientIds.add(vv.patient_id);
+        }
+      }
+      for (const r of (sl ?? []) as Array<{ cash: number; card: number }>) {
+        totalCash += r.cash;
+        totalCard += r.card;
+      }
+      return {
+        totalCash,
+        totalCard,
+        total: totalCash + totalCard,
+        visitCount: visitIds.size,
+        patientCount: patientIds.size,
+      };
+    },
+    async topPatients(centerId, from, to, limit = 10): Promise<PatientSalesRow[]> {
+      const sb = createClient();
+      const { data, error } = await sb
+        .from("visit_sale_lines")
+        .select(
+          `cash, card,
+           visit:visits!inner(visit_date, patient_id, center_id,
+             personal:patient_personal(name))`
+        )
+        .eq("visit.center_id", centerId)
+        .gte("visit.visit_date", from)
+        .lte("visit.visit_date", to);
+      if (error) throw error;
+      const acc = new Map<
+        string,
+        { name: string | null; total: number; last: string | null }
+      >();
+      for (const r of (data ?? []) as Array<{
+        cash: number;
+        card: number;
+        visit:
+          | {
+              visit_date: string;
+              patient_id: string;
+              personal:
+                | { name: string | null }
+                | { name: string | null }[]
+                | null;
+            }
+          | Array<{
+              visit_date: string;
+              patient_id: string;
+              personal:
+                | { name: string | null }
+                | { name: string | null }[]
+                | null;
+            }>;
+      }>) {
+        const vv = Array.isArray(r.visit) ? r.visit[0] : r.visit;
+        if (!vv) continue;
+        const personal = Array.isArray(vv.personal) ? vv.personal[0] : vv.personal;
+        const cur = acc.get(vv.patient_id) ?? {
+          name: personal?.name ?? null,
+          total: 0,
+          last: null as string | null,
+        };
+        cur.total += r.cash + r.card;
+        if (!cur.last || vv.visit_date > cur.last) cur.last = vv.visit_date;
+        acc.set(vv.patient_id, cur);
+      }
+      const rows = Array.from(acc.entries())
+        .map(([patientId, v]) => ({
+          patientId,
+          patientName: v.name,
+          total: v.total,
+          lastVisitDate: v.last,
+        }))
+        .sort((a, b) => b.total - a.total)
+        .slice(0, limit);
+      return rows;
+    },
+    async outstandingByPatient(centerId) {
+      const sb = createClient();
+      const { data, error } = await sb
+        .from("visits")
+        .select(
+          `outstanding_amount, patient_id,
+           personal:patient_personal(name)`
+        )
+        .eq("center_id", centerId)
+        .gt("outstanding_amount", 0);
+      if (error) throw error;
+      const acc = new Map<
+        string,
+        { name: string | null; total: number }
+      >();
+      for (const r of (data ?? []) as Array<{
+        outstanding_amount: number;
+        patient_id: string;
+        personal:
+          | { name: string | null }
+          | { name: string | null }[]
+          | null;
+      }>) {
+        const personal = Array.isArray(r.personal) ? r.personal[0] : r.personal;
+        const cur = acc.get(r.patient_id) ?? {
+          name: personal?.name ?? null,
+          total: 0,
+        };
+        cur.total += r.outstanding_amount;
+        acc.set(r.patient_id, cur);
+      }
+      return Array.from(acc.entries())
+        .map(([patientId, v]) => ({
+          patientId,
+          patientName: v.name,
+          total: v.total,
+        }))
+        .sort((a, b) => b.total - a.total);
     },
   },
 
