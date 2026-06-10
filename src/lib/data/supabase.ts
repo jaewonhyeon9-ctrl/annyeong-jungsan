@@ -755,7 +755,11 @@ export const supabaseDataSource: DataSource = {
         await new Promise((r) => setTimeout(r, 100 + attempt * 100));
       }
 
-      if (!data) throw lastError ?? new Error("환자 등록 실패");
+      if (!data) {
+        const msg = lastError?.message ?? "환자 등록 실패";
+        const code = lastError?.code ? ` (${lastError.code})` : "";
+        throw new Error(`${msg}${code}`);
+      }
 
       // 개인정보 별도 테이블
       if (input.personal) {

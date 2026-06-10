@@ -76,11 +76,28 @@ function LoginInner() {
     try {
       const { createClient } = await import("@/lib/supabase/client");
       const sb = createClient();
-      const { error } = await sb.auth.signInWithPassword({
+      const { data: signInData, error } = await sb.auth.signInWithPassword({
         email: normalizedEmail,
         password,
       });
       if (error) throw error;
+
+      // 정지된(active=false) 계정 차단
+      const userId = signInData.user?.id;
+      if (userId) {
+        const { data: prof } = await sb
+          .from("profiles")
+          .select("active")
+          .eq("id", userId)
+          .single();
+        if (prof && prof.active === false) {
+          await sb.auth.signOut();
+          throw new Error(
+            "정지된 계정입니다. 법인 관리자에게 문의해주세요."
+          );
+        }
+      }
+
       router.push(redirect);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
