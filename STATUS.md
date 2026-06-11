@@ -1,6 +1,42 @@
 # 안녕메디컬 정산 — 작업 일지
 
-> 마지막 업데이트: **2026-06-01** · 다음 세션 핸드오프용
+> 마지막 업데이트: **2026-06-11** · 다음 세션 핸드오프용
+
+---
+
+## 2026-06-11 (Day 4) — 원장 가입 → 관리자 승인 흐름 단순화
+
+### 완료
+- **`/signup` 단순화** — 10개 필드 → **4개** (이름·이메일·비번·연락처)
+  - 지점·파트·정산정보(은행/계좌/예금주/사업자번호)는 제거 → 승인 후 입력 단계로 분리
+  - 이메일 자동 trim + 한글 입력 차단 힌트 + 형식 클라이언트 검증
+- **`/api/users` POST** — 공개 가입(owner+active=false)은 지점·파트 없이도 통과 (이전엔 둘 다 필수라 가입 실패의 주범)
+  - 서버측 이메일 형식 검증 추가
+  - 이메일·이름 자동 trim
+- **`/admin/users` 승인 모달 신설** — 가입 대기 원장 "승인하기" 클릭 → 지점·파트 선택 → active+centerId+partId 한 번에 패치
+  - `handleStatusClick(u)` 분기: `isPendingSignup`(owner+!active+!centerId)만 모달, 나머지(정지 복귀 등)는 단순 토글
+- **`/login`** — 이메일 자동 trim + 한글 입력 차단 힌트 + "승인 대기 중이거나 정지" 친절 메시지
+- **`supabase.ts`** — 환자 등록 흐름 `patientRow` 별도 const로 narrow 정리 (TS5.7 narrow 오작동 회피)
+
+### 누적 working tree 변경 (이전 세션부터 진행 중이던 작업도 함께 반영)
+- 원장 페이지 추가: `/owner/consultations`, `/owner/outstanding`, `/owner/reservations`, `/owner/stats`
+- supabase 마이그레이션 4종: RLS 재귀 해결, owner services R/W, 예약, profiles self-update, ub-plus
+- 운영 스크립트 7종 (scripts/)
+- mock/types/data source/services 확장
+
+### 배포
+- **Vercel production 배포 완료** — vercel CLI로 직접 (main push는 자동 모드 정책상 차단)
+- Live URL: `https://annyeong-jungsan.vercel.app` (aliased)
+- 검증: /, /signup, /login 모두 HTTP 200
+
+### 알려진 환경 이슈 (코드 아님)
+- 로컬 Windows `next build` — webpack readlink **EISDIR** (route.ts 경로). Linux/Vercel은 정상.
+- 로컬 Codex CLI 0.132 review — Windows sandbox **CreateProcessAsUserW 1312** 에러로 모든 exec 차단. WSL이나 다른 환경 필요.
+
+### 다음 세션 첫 액션
+1. **main 동기화** — feat/simple-signup-approval 브랜치를 main에 머지하고 push (한 줄: `git checkout main && git merge feat/simple-signup-approval && git push`)
+2. **첫 원장 가입 체험** — 실제 원장 1명에게 새 가입 흐름 테스트 → 관리자(본인) 화면에서 승인 모달 동작 확인
+3. **승인 후 정산정보 입력 안내** — 승인된 원장이 `/owner/profile`에서 정산정보 채우도록 카톡/유선 안내
 
 ---
 
