@@ -82,18 +82,18 @@ function LoginInner() {
       });
       if (error) throw error;
 
-      // 정지된(active=false) 계정 차단
+      // 승인 대기/정지(active=false) 계정 차단
       const userId = signInData.user?.id;
       if (userId) {
         const { data: prof } = await sb
           .from("profiles")
           .select("active")
           .eq("id", userId)
-          .single();
+          .single<{ active: boolean | null }>();
         if (prof && prof.active === false) {
           await sb.auth.signOut();
           throw new Error(
-            "정지된 계정입니다. 법인 관리자에게 문의해주세요."
+            "관리자 승인 대기 중이거나 정지된 계정입니다. 관리자에게 문의해주세요."
           );
         }
       }
@@ -170,9 +170,13 @@ function LoginInner() {
             <label className="text-xs font-medium text-sand-600">이메일</label>
             <input
               type="email"
+              inputMode="email"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="manager@annyeong.com"
+              onChange={(e) => setEmail(e.target.value.trim())}
+              placeholder="name@example.com"
               className="mt-1 w-full rounded-lg border border-sand-200 bg-white px-3 py-2 text-sm focus:border-clay-400 focus:outline-none"
             />
           </div>

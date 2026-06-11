@@ -67,17 +67,26 @@ export async function POST(request: Request) {
   }
 
   const input = (await request.json()) as Partial<UserCreateInput>;
+  if (input.email) input.email = input.email.trim();
+  if (input.displayName) input.displayName = input.displayName.trim();
   if (!input.email || !input.password || !input.displayName || !input.role) {
     return badRequest("이메일, 비밀번호, 이름, 역할은 필수입니다.");
   }
-  if (input.role === "owner" && (!input.centerId || !input.partId)) {
+
+  const isPublicSignup = input.role === "owner" && input.active === false;
+
+  // 공개 가입(승인 대기)은 지점·파트 없이도 가능 — 관리자가 승인 시 지정.
+  // 관리자가 직접 만드는 owner는 지점·파트 필수.
+  if (!isPublicSignup && input.role === "owner" && (!input.centerId || !input.partId)) {
     return badRequest("원장 계정은 지점과 파트가 필요합니다.");
   }
   if (input.password.length < 6) {
     return badRequest("비밀번호는 최소 6자 이상이어야 합니다.");
   }
-
-  const isPublicSignup = input.role === "owner" && input.active === false;
+  // 간단 이메일 형식 체크 — 클라이언트 검증 보강
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email)) {
+    return badRequest("이메일 형식이 올바르지 않습니다. (예: name@example.com)");
+  }
   let isAdminRequest = false;
 
   if (!isPublicSignup) {

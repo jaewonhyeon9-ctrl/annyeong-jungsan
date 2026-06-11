@@ -7,15 +7,29 @@ import type {
 } from "./source";
 import type {
   Center,
+  Consultation,
+  ConsultationCreateInput,
+  ConsultationUpdateInput,
   DailyEntry,
   InflowEntry,
+  LoyaltyCreateInput,
+  LoyaltyEntry,
+  PatientSalesRow,
   Patient,
+  Reservation,
+  ReservationCreateInput,
+  ReservationUpdateInput,
+  SalesSummary,
+  ServiceCreateInput,
+  ServiceRecord,
+  ServiceUpdateInput,
   SettlementRule,
   UserCreateInput,
   UserProfile,
   Visit,
 } from "@/lib/types";
 import { DEFAULT_RULE } from "@/lib/types";
+import { SERVICES } from "@/lib/services";
 import { MOCK_CENTERS, MOCK_ENTRIES, MOCK_INFLOWS } from "@/lib/mock";
 import {
   MOCK_PATIENTS,
@@ -114,6 +128,8 @@ type MockStore = {
   entries: DailyEntry[];
   inflows: InflowEntry[];
   users: UserProfile[];
+  services?: ServiceRecord[];
+  reservations?: Reservation[];
 };
 
 const STORE_KEY = "annyeong-local-store-v1";
@@ -126,6 +142,8 @@ function seedStore(): MockStore {
     entries: clone(MOCK_ENTRIES),
     inflows: clone(MOCK_INFLOWS),
     users: clone(MOCK_USERS),
+    services: [],
+    reservations: [],
   };
 }
 
@@ -137,6 +155,7 @@ let store: MockStore = {
   entries: [...MOCK_ENTRIES],
   inflows: [...MOCK_INFLOWS],
   users: [...MOCK_USERS],
+  services: [],
 };
 let hydrated = false;
 
@@ -192,6 +211,8 @@ function hydrateStore() {
       entries: parsed.entries ?? seeded.entries,
       inflows: parsed.inflows ?? seeded.inflows,
       users: mergeUsers(parsed.users, seeded.users),
+      services: parsed.services ?? seeded.services,
+      reservations: parsed.reservations ?? seeded.reservations,
     };
     persistStore(); // 시드 보강된 사용자 다시 저장
   } catch {
@@ -548,6 +569,186 @@ export const mockDataSource: DataSource = {
   settlement: {
     async rule(_centerId: string): Promise<SettlementRule> {
       return { ...DEFAULT_RULE };
+    },
+  },
+
+  reservations: {
+    async byMonth(centerId: string, yearMonth: string): Promise<Reservation[]> {
+      const s = readStore();
+      const list = (s.reservations ?? []) as Reservation[];
+      return clone(
+        list
+          .filter(
+            (r) =>
+              r.centerId === centerId &&
+              r.scheduledAt.startsWith(yearMonth)
+          )
+          .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
+      );
+    },
+    async byDate(centerId: string, date: string): Promise<Reservation[]> {
+      const s = readStore();
+      const list = (s.reservations ?? []) as Reservation[];
+      return clone(
+        list
+          .filter(
+            (r) =>
+              r.centerId === centerId && r.scheduledAt.startsWith(date)
+          )
+          .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
+      );
+    },
+    async create(input: ReservationCreateInput): Promise<Reservation> {
+      const now = new Date().toISOString();
+      const created: Reservation = {
+        id: `r-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+        centerId: input.centerId,
+        partId: input.partId,
+        ownerId: input.ownerId ?? null,
+        patientId: input.patientId ?? null,
+        patientName: input.patientName ?? null,
+        patientPhone: input.patientPhone ?? null,
+        scheduledAt: input.scheduledAt,
+        durationMin: input.durationMin ?? 30,
+        serviceId: input.serviceId ?? null,
+        serviceName: input.serviceName ?? null,
+        status: input.status ?? "scheduled",
+        memo: input.memo ?? null,
+        createdBy: null,
+        createdAt: now,
+        updatedAt: null,
+      };
+      commit((store) => {
+        store.reservations = [...(store.reservations ?? []), created];
+      });
+      return clone(created);
+    },
+    async update(id: string, patch: ReservationUpdateInput): Promise<Reservation> {
+      let updated: Reservation | null = null;
+      commit((store) => {
+        const list = store.reservations ?? [];
+        const idx = list.findIndex((r) => r.id === id);
+        if (idx < 0) throw new Error("예약을 찾을 수 없습니다.");
+        const cur = list[idx];
+        const merged: Reservation = {
+          ...cur,
+          ...patch,
+          updatedAt: new Date().toISOString(),
+        };
+        list[idx] = merged;
+        store.reservations = list;
+        updated = merged;
+      });
+      return clone(updated!);
+    },
+    async delete(id: string) {
+      commit((store) => {
+        store.reservations = (store.reservations ?? []).filter((r) => r.id !== id);
+      });
+    },
+  },
+
+  consultations: {
+    async listByPatient(_patientId: string): Promise<Consultation[]> {
+      return [];
+    },
+    async listByCenter(_centerId: string, _limit?: number): Promise<Consultation[]> {
+      return [];
+    },
+    async create(_input: ConsultationCreateInput): Promise<Consultation> {
+      throw new Error("상담관리는 Supabase 모드에서만 사용 가능합니다.");
+    },
+    async update(_id: string, _patch: ConsultationUpdateInput): Promise<Consultation> {
+      throw new Error("상담관리는 Supabase 모드에서만 사용 가능합니다.");
+    },
+    async delete(_id: string): Promise<void> {
+      throw new Error("상담관리는 Supabase 모드에서만 사용 가능합니다.");
+    },
+  },
+
+  loyalty: {
+    async historyByPatient(_patientId: string): Promise<LoyaltyEntry[]> {
+      return [];
+    },
+    async addEntry(_input: LoyaltyCreateInput): Promise<LoyaltyEntry> {
+      throw new Error("적립금은 Supabase 모드에서만 사용 가능합니다.");
+    },
+  },
+
+  stats: {
+    async summary(_centerId: string, _from: string, _to: string): Promise<SalesSummary> {
+      return { totalCash: 0, totalCard: 0, total: 0, visitCount: 0, patientCount: 0 };
+    },
+    async topPatients(
+      _centerId: string,
+      _from: string,
+      _to: string,
+      _limit?: number
+    ): Promise<PatientSalesRow[]> {
+      return [];
+    },
+    async outstandingByPatient(_centerId: string) {
+      return [] as Array<{
+        patientId: string;
+        patientName: string | null;
+        total: number;
+      }>;
+    },
+  },
+
+  services: {
+    async list(): Promise<ServiceRecord[]> {
+      // mock 모드는 builtin SERVICES + store.services (사용자 추가분) 머지
+      const s = readStore();
+      const builtin: ServiceRecord[] = SERVICES.map((svc) => ({
+        ...svc,
+        active: true,
+        sortOrder: 0,
+      }));
+      const custom = (s.services ?? []) as ServiceRecord[];
+      return [...builtin, ...clone(custom)];
+    },
+    async create(input: ServiceCreateInput): Promise<ServiceRecord> {
+      const id =
+        input.id?.trim() ||
+        `${input.partId}.${input.name
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9가-힣]+/g, "_")
+          .replace(/^_+|_+$/g, "") || `svc_${Date.now().toString(36)}`}`;
+      if (SERVICES.some((s) => s.id === id)) {
+        throw new Error(`이미 사용 중인 ID 입니다: ${id}`);
+      }
+      const record: ServiceRecord = {
+        id,
+        partId: input.partId,
+        name: input.name.trim(),
+        defaultPrice: input.defaultPrice,
+        active: input.active ?? true,
+        sortOrder: input.sortOrder ?? 0,
+      };
+      commit((store) => {
+        store.services = [...(store.services ?? []), record];
+      });
+      return clone(record);
+    },
+    async update(id: string, patch: ServiceUpdateInput): Promise<ServiceRecord> {
+      let updated: ServiceRecord | null = null;
+      commit((store) => {
+        const list = store.services ?? [];
+        const idx = list.findIndex((s) => s.id === id);
+        if (idx < 0) throw new Error("시술을 찾을 수 없습니다.");
+        const merged: ServiceRecord = { ...list[idx], ...patch };
+        list[idx] = merged;
+        store.services = list;
+        updated = merged;
+      });
+      return clone(updated!);
+    },
+    async delete(id: string) {
+      commit((store) => {
+        store.services = (store.services ?? []).filter((s) => s.id !== id);
+      });
     },
   },
 };

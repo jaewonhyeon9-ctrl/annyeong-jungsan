@@ -31,3 +31,5 @@ next-env.d.ts
 
 # Local admin seed (contains password)
 supabase/seed-admin.sql
+
+.vercel

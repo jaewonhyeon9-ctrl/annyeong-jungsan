@@ -1,6 +1,44 @@
 # 안녕메디컬 정산 — 작업 일지
 
-> 마지막 업데이트: **2026-05-15** · 다음 세션 핸드오프용
+> 마지막 업데이트: **2026-06-01** · 다음 세션 핸드오프용
+
+---
+
+## 2026-06-01 (Day 3) — 원장 시술 등록 + Supabase production 연결
+
+### 완료
+- **`/owner/services` 신설** — 각 원장이 자기 파트의 시술을 직접 등록·수정·비활성·삭제
+  - `src/lib/services.ts` — `CustomService` 시스템 + localStorage 영속화 (`addCustomService` / `updateCustomService` / `removeCustomService`)
+  - `servicesByPart` / `findService`가 자동으로 사용자 시술 포함 → 빠른매출·방문 차트에 즉시 반영
+  - 원장 홈 메뉴 3칸 (환자/유입/시술 품목)
+- **GitHub commit + push 완료** (`eecbd70`) → Vercel 자동 배포
+- **Vercel production env 4개 등록** (이전까지 비어있어서 production은 mock 모드로 돌고 있었음 — 모바일 로그인 안 되던 근본 원인)
+  - `NEXT_PUBLIC_DATA_SOURCE=supabase`
+  - `NEXT_PUBLIC_SUPABASE_URL`
+  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+  - `SUPABASE_SERVICE_ROLE_KEY`
+- **Production redeploy 완료** — `annyeong-jungsan-di32fhh0e-...vercel.app` (Ready)
+- 로컬 repo가 Vercel 프로젝트에 link됨 (`.vercel/` 자동 생성, .gitignore됨)
+
+### 다음 세션 첫 액션
+1. **production 접속 확인** — PC와 모바일에서 같은 계정으로 로그인되는지 (Supabase 연결 검증)
+2. **Supabase schema 적용 확인** — Dashboard SQL Editor에서 `supabase/schema.sql` 실행됐는지 확인. 안 됐으면 실행
+3. **시드 사용자 적용** — `MOCK_USERS` (data/mock.ts 27~108) 의 8명을 Supabase auth + users 테이블에 시드. 또는 "+ 원장 가입 신청"으로 새로 생성
+4. **거래처 안내문 발송** — 시술 품목 기능 + 모바일 로그인 정상화 확인 후
+
+### 알려진 잠재 이슈
+- Supabase에 schema 미적용 시 모든 쿼리 실패 → 로그인 후 빈 화면/에러
+- `MOCK_USERS` 와 Supabase auth users 가 별개 — Supabase 활성 모드에서는 실제 가입 흐름 필요
+- `.env.local`의 service_role 키가 대화 로그에 노출됨 → 외부 공유 가능성 있다면 회전 권장
+
+### 환경 메모
+- Vercel team: `jaewonhyeon9-7705s-projects`
+- Vercel project: `annyeong-jungsan`
+- 로컬에 `vercel` CLI 설치되어 있음 (env 추가/배포 가능)
+
+---
+
+## 2026-05-15 이전 이력
 
 ---
 

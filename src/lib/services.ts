@@ -1,4 +1,6 @@
-import type { PartId, Service } from "./types";
+import { useEffect, useState } from "react";
+import type { PartId, Service, ServiceRecord } from "./types";
+import { getDataSource } from "./data";
 
 // 파트별 시술 카탈로그 — 두피는 엑셀 양식 기준, 나머지 4개 파트는 일반적 시술로 초안.
 // 운영 중 admin에서 자유롭게 추가/수정 예정.
@@ -138,6 +140,86 @@ export function findService(id: string): Service | undefined {
     SERVICES.find((s) => s.id === id) ||
     customServices.find((s) => s.id === id)
   );
+}
+
+// ============================================================
+// Supabase services 테이블 기반 hook — single source of truth
+// ============================================================
+// 모듈-수준 캐시: 한 번 fetch한 결과를 페이지 간 공유 + 무효화 가능
+
+let _cache: ServiceRecord[] | null = null;
+let _cachePromise: Promise<ServiceRecord[]> | null = null;
+const _listeners = new Set<() => void>();
+
+async function fetchServicesFromSource(): Promise<ServiceRecord[]> {
+  const data = await getDataSource();
+  const list = await data.services.list();
+  _cache = list;
+  for (const l of _listeners) l();
+  return list;
+}
+
+export function invalidateServicesCache() {
+  _cache = null;
+  _cachePromise = null;
+  for (const l of _listeners) l();
+}
+
+/**
+ * 전체 시술 목록을 reactive하게 받는 hook.
+ * 첫 호출 시 Supabase에서 fetch하고 캐시. invalidateServicesCache() 호출로 갱신.
+ */
+export function useAllServices(): {
+  services: ServiceRecord[];
+  loaded: boolean;
+  refresh: () => Promise<void>;
+} {
+  const [, setTick] = useState(0);
+  const [loaded, setLoaded] = useState(_cache !== null);
+
+  useEffect(() => {
+    const listener = () => setTick((t) => t + 1);
+    _listeners.add(listener);
+    if (_cache === null && _cachePromise === null) {
+      _cachePromise = fetchServicesFromSource()
+        .then((list) => {
+          setLoaded(true);
+          return list;
+        })
+        .finally(() => {
+          _cachePromise = null;
+        });
+    } else if (_cache !== null) {
+      setLoaded(true);
+    }
+    return () => {
+      _listeners.delete(listener);
+    };
+  }, []);
+
+  const refresh = async () => {
+    invalidateServicesCache();
+    await fetchServicesFromSource();
+  };
+
+  return { services: _cache ?? [], loaded, refresh };
+}
+
+/**
+ * 특정 파트 시술만 — active=true & sortOrder/name 정렬.
+ */
+export function useServicesByPart(partId: PartId | null) {
+  const { services, loaded, refresh } = useAllServices();
+  const filtered = partId
+    ? services
+        .filter((s) => s.partId === partId && s.active)
+        .sort(
+          (a, b) =>
+            (a.sortOrder ?? 0) - (b.sortOrder ?? 0) ||
+            a.name.localeCompare(b.name)
+        )
+    : [];
+  return { services: filtered, loaded, refresh };
 }
 
 // 제품 카탈로그 (두피 파트 — 엑셀 기준)

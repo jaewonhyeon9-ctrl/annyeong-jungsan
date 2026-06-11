@@ -7,8 +7,8 @@ import { getDataSource } from "@/lib/data";
 import { fmtDate, fmtWon, todayKST } from "@/lib/format";
 import { ocrFromFile } from "@/lib/ocr/client";
 import type { PosOcrData, ReceiptOcrData } from "@/lib/ocr/types";
-import { findService, SERVICES, servicesByPart } from "@/lib/services";
-import { isProfileComplete, PARTS, type PartId } from "@/lib/types";
+import { useAllServices } from "@/lib/services";
+import { isProfileComplete, PARTS, type PartId, type ServiceRecord } from "@/lib/types";
 import { useCurrentCenter } from "@/lib/use-current-center";
 import { useCurrentProfile } from "@/lib/use-current-profile";
 
@@ -17,6 +17,7 @@ type EntryDraft = Record<string, { cash: number; card: number }>;
 export default function OwnerHome() {
   const { centerId, loaded: centerLoaded, error: centerError } = useCurrentCenter();
   const { profile } = useCurrentProfile();
+  const { services: allServices } = useAllServices();
   const [date, setDate] = useState(todayKST());
 
   // 사용자의 파트로 자동 좁힘 — 원장은 자기 파트만 표시
@@ -97,12 +98,12 @@ export default function OwnerHome() {
 
   function findServiceIdByName(name: string, partGuess: PartId | null): string | null {
     const norm = (s: string) => s.replace(/\s+/g, "").toLowerCase();
-    const exact = SERVICES.find((s) => norm(s.name) === norm(name));
+    const exact = allServices.find((s) => norm(s.name) === norm(name));
     if (exact) return exact.id;
     if (partGuess) {
-      const inPart = servicesByPart(partGuess).find((s) =>
-        norm(name).includes(norm(s.name))
-      );
+      const inPart = allServices
+        .filter((s) => s.partId === partGuess && s.active)
+        .find((s) => norm(name).includes(norm(s.name)));
       if (inPart) return inPart.id;
     }
     return null;
@@ -212,7 +213,8 @@ export default function OwnerHome() {
         return;
       }
       const catalogSales = filled.map(([serviceId, v]) => {
-        const svc = findService(serviceId)!;
+        const svc = allServices.find((s) => s.id === serviceId);
+        if (!svc) throw new Error(`알 수 없는 시술 ID: ${serviceId}`);
         return {
           serviceId,
           serviceName: svc.name,
@@ -366,7 +368,13 @@ export default function OwnerHome() {
       {/* 파트별 매출 입력 — 원장 사용자는 자기 파트만 표시 */}
       <div className="space-y-3">
         {visibleParts.map((part) => {
-          const services = servicesByPart(part.id);
+          const services: ServiceRecord[] = allServices
+            .filter((s) => s.partId === part.id && s.active)
+            .sort(
+              (a, b) =>
+                (a.sortOrder ?? 0) - (b.sortOrder ?? 0) ||
+                a.name.localeCompare(b.name)
+            );
           const isOpen = openPart === part.id;
           const partTotal = services.reduce((s, svc) => {
             const v = draft[svc.id];
@@ -527,15 +535,47 @@ export default function OwnerHome() {
         )}
       </Card>
 
-      {/* 환자 관리 / 유입 / 시술 품목 */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* 메뉴 그리드 */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Link
+          href="/owner/reservations"
+          className="rounded-2xl border-2 border-clay-300 bg-clay-500/10 px-4 py-4 text-center"
+        >
+          <div className="text-xl">📅</div>
+          <div className="mt-1 text-sm font-semibold text-sand-800">예약</div>
+          <div className="text-[11px] text-sand-500">월간 · 일별 그리드</div>
+        </Link>
+        <Link
+          href="/owner/stats"
+          className="rounded-2xl border-2 border-moss-300 bg-moss-500/10 px-4 py-4 text-center"
+        >
+          <div className="text-xl">📊</div>
+          <div className="mt-1 text-sm font-semibold text-sand-800">매출 통계</div>
+          <div className="text-[11px] text-sand-500">오늘 · 이번달 · TOP</div>
+        </Link>
+        <Link
+          href="/owner/consultations"
+          className="rounded-2xl border border-sand-200 bg-white/70 px-4 py-4 text-center"
+        >
+          <div className="text-xl">💬</div>
+          <div className="mt-1 text-sm font-semibold text-sand-800">상담 관리</div>
+          <div className="text-[11px] text-sand-500">이력 · 다음 약속</div>
+        </Link>
+        <Link
+          href="/owner/outstanding"
+          className="rounded-2xl border border-sand-200 bg-white/70 px-4 py-4 text-center"
+        >
+          <div className="text-xl">💸</div>
+          <div className="mt-1 text-sm font-semibold text-sand-800">미수금</div>
+          <div className="text-[11px] text-sand-500">환자별 합계</div>
+        </Link>
         <Link
           href="/owner/patients"
           className="rounded-2xl border border-sand-200 bg-white/70 px-4 py-4 text-center"
         >
           <div className="text-xl">👤</div>
           <div className="mt-1 text-sm font-semibold text-sand-800">환자 관리</div>
-          <div className="text-[11px] text-sand-500">신규 등록 · 방문 차트</div>
+          <div className="text-[11px] text-sand-500">신규 · 방문 차트</div>
         </Link>
         <Link
           href="/owner/inflow"
@@ -543,7 +583,7 @@ export default function OwnerHome() {
         >
           <div className="text-xl">📈</div>
           <div className="mt-1 text-sm font-semibold text-sand-800">월별 유입</div>
-          <div className="text-[11px] text-sand-500">유입경로 · 신규환자</div>
+          <div className="text-[11px] text-sand-500">유입경로 · 신규</div>
         </Link>
         <Link
           href="/owner/services"
@@ -551,7 +591,7 @@ export default function OwnerHome() {
         >
           <div className="text-xl">🧾</div>
           <div className="mt-1 text-sm font-semibold text-sand-800">시술 품목</div>
-          <div className="text-[11px] text-sand-500">등록 · 수정 · 비활성</div>
+          <div className="text-[11px] text-sand-500">등록 · 수정</div>
         </Link>
       </div>
 

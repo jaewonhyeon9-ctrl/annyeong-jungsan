@@ -3,9 +3,22 @@
 
 import type {
   Center,
+  Consultation,
+  ConsultationCreateInput,
+  ConsultationUpdateInput,
   DailyEntry,
   InflowEntry,
+  LoyaltyCreateInput,
+  LoyaltyEntry,
+  PatientSalesRow,
   Patient,
+  Reservation,
+  ReservationCreateInput,
+  ReservationUpdateInput,
+  SalesSummary,
+  ServiceCreateInput,
+  ServiceRecord,
+  ServiceUpdateInput,
   SettlementRule,
   UserCreateInput,
   UserProfile,
@@ -99,5 +112,50 @@ export interface DataSource {
   };
   settlement: {
     rule(centerId: string): Promise<SettlementRule>;
+  };
+  // 시술 카탈로그 — admin은 전체, owner는 자기 파트만 R/W
+  services: {
+    list(): Promise<ServiceRecord[]>;
+    create(input: ServiceCreateInput): Promise<ServiceRecord>;
+    update(id: string, patch: ServiceUpdateInput): Promise<ServiceRecord>;
+    delete(id: string): Promise<void>;
+  };
+  // 예약 — owner는 자기 center+part만, admin은 전체
+  reservations: {
+    byMonth(centerId: string, yearMonth: string): Promise<Reservation[]>;
+    byDate(centerId: string, date: string): Promise<Reservation[]>;
+    create(input: ReservationCreateInput): Promise<Reservation>;
+    update(id: string, patch: ReservationUpdateInput): Promise<Reservation>;
+    delete(id: string): Promise<void>;
+  };
+  // 상담관리 — 환자별 상담 이력
+  consultations: {
+    listByPatient(patientId: string): Promise<Consultation[]>;
+    listByCenter(centerId: string, limit?: number): Promise<Consultation[]>;
+    create(input: ConsultationCreateInput): Promise<Consultation>;
+    update(id: string, patch: ConsultationUpdateInput): Promise<Consultation>;
+    delete(id: string): Promise<void>;
+  };
+  // 적립금
+  loyalty: {
+    historyByPatient(patientId: string): Promise<LoyaltyEntry[]>;
+    addEntry(input: LoyaltyCreateInput): Promise<LoyaltyEntry>; // 적립/사용 (delta 부호로 구분)
+  };
+  // 매출 통계
+  stats: {
+    summary(
+      centerId: string,
+      from: string,
+      to: string
+    ): Promise<SalesSummary>;
+    topPatients(
+      centerId: string,
+      from: string,
+      to: string,
+      limit?: number
+    ): Promise<PatientSalesRow[]>;
+    outstandingByPatient(
+      centerId: string
+    ): Promise<Array<{ patientId: string; patientName: string | null; total: number }>>;
   };
 }

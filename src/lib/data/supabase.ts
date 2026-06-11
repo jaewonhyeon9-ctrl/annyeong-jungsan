@@ -760,11 +760,12 @@ export const supabaseDataSource: DataSource = {
         const code = lastError?.code ? ` (${lastError.code})` : "";
         throw new Error(`${msg}${code}`);
       }
+      const patientRow = data;
 
       // 개인정보 별도 테이블
       if (input.personal) {
         const { error: personalError } = await sb.from("patient_personal").upsert({
-          patient_id: id,
+          patient_id: patientRow.id,
           name: input.personal.name ?? null,
           gender: input.personal.gender ?? null,
           phone: input.personal.phone ?? null,
@@ -774,10 +775,10 @@ export const supabaseDataSource: DataSource = {
         if (personalError) throw personalError;
       }
 
-      await upsertPatientChart(sb, id, input.chart);
+      await upsertPatientChart(sb, patientRow.id, input.chart);
 
-      const created = await this.get(id);
-      return created ?? rowToPatient(data);
+      const created = await this.get(patientRow.id);
+      return created ?? rowToPatient(patientRow);
     },
     async update(id, patch) {
       const sb = createClient();

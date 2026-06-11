@@ -103,6 +103,156 @@ export interface Service {
   defaultPrice: number;
 }
 
+// services 테이블 한 행. builtin/custom 구분 없이 동일 구조.
+export interface ServiceRecord extends Service {
+  active: boolean;
+  sortOrder: number;
+}
+
+export interface ServiceCreateInput {
+  id?: string;          // 미지정 시 name+partId로 자동 생성
+  partId: PartId;
+  name: string;
+  defaultPrice: number;
+  sortOrder?: number;
+  active?: boolean;
+}
+
+export type ServiceUpdateInput = Partial<{
+  name: string;
+  defaultPrice: number;
+  sortOrder: number;
+  active: boolean;
+}>;
+
+// ============================================================
+// 예약 (Reservation)
+// ============================================================
+export type ReservationStatus =
+  | "scheduled"
+  | "completed"
+  | "cancelled"
+  | "no_show";
+
+export const RESERVATION_STATUS_LABELS: Record<ReservationStatus, string> = {
+  scheduled: "예정",
+  completed: "완료",
+  cancelled: "취소",
+  no_show: "노쇼",
+};
+
+export interface Reservation {
+  id: string;
+  centerId: string;
+  partId: PartId;
+  ownerId: string | null;
+  ownerName?: string;            // 조인 결과 — 선택 표시용
+  patientId: string | null;       // 환자 DB 연결 시
+  patientName: string | null;     // 신규/스냅샷
+  patientPhone: string | null;
+  scheduledAt: string;            // ISO datetime
+  durationMin: number;
+  serviceId: string | null;
+  serviceName: string | null;
+  status: ReservationStatus;
+  memo: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string | null;
+}
+
+export interface ReservationCreateInput {
+  centerId: string;
+  partId: PartId;
+  ownerId?: string | null;
+  patientId?: string | null;
+  patientName?: string | null;
+  patientPhone?: string | null;
+  scheduledAt: string;
+  durationMin?: number;
+  serviceId?: string | null;
+  serviceName?: string | null;
+  status?: ReservationStatus;
+  memo?: string | null;
+}
+
+export type ReservationUpdateInput = Partial<
+  Omit<ReservationCreateInput, "centerId" | "partId">
+>;
+
+// ============================================================
+// 상담 (Consultation)
+// ============================================================
+export interface Consultation {
+  id: string;
+  centerId: string;
+  partId: PartId | null;
+  patientId: string;
+  patientName?: string;          // 조인 결과 — 표시용
+  ownerId: string | null;
+  ownerName?: string;
+  consultedAt: string;           // ISO datetime
+  content: string;
+  nextFollowup: string | null;   // ISO date
+  createdAt: string;
+  updatedAt: string | null;
+}
+
+export interface ConsultationCreateInput {
+  centerId: string;
+  partId?: PartId | null;
+  patientId: string;
+  ownerId?: string | null;
+  consultedAt?: string;
+  content: string;
+  nextFollowup?: string | null;
+}
+
+export type ConsultationUpdateInput = Partial<{
+  ownerId: string | null;
+  consultedAt: string;
+  content: string;
+  nextFollowup: string | null;
+}>;
+
+// ============================================================
+// 적립금 이력 (Loyalty)
+// ============================================================
+export interface LoyaltyEntry {
+  id: string;
+  patientId: string;
+  centerId: string;
+  delta: number;            // 양수=적립, 음수=사용
+  reason: string | null;
+  balanceAfter: number;
+  createdAt: string;
+}
+
+export interface LoyaltyCreateInput {
+  patientId: string;
+  centerId: string;
+  delta: number;
+  reason?: string | null;
+}
+
+// ============================================================
+// 통계 — 가벼운 집계 결과 타입
+// ============================================================
+export interface SalesSummary {
+  totalCash: number;
+  totalCard: number;
+  total: number;
+  visitCount: number;
+  patientCount: number;
+}
+
+export interface PatientSalesRow {
+  patientId: string;
+  patientName: string | null;
+  total: number;
+  lastVisitDate: string | null;
+}
+
 export interface SaleLine {
   serviceId: string;
   serviceName: string; // snapshot — 시술명 바뀌어도 과거 기록 유지

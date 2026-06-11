@@ -57,7 +57,7 @@ create table public.profiles (
 
 -- helper: 현재 유저의 part_id
 create or replace function public.current_part_id() returns part_id
-language sql stable as $$
+language sql stable security definer set search_path = public as $$
   select part_id from public.profiles where id = auth.uid()
 $$;
 
@@ -276,21 +276,56 @@ alter table public.patient_charts enable row level security;
 alter table public.visits enable row level security;
 alter table public.visit_sale_lines enable row level security;
 
+-- ============================================================
+-- 예약 (reservations)
+-- ============================================================
+create type reservation_status as enum ('scheduled', 'completed', 'cancelled', 'no_show');
+
+create table public.reservations (
+  id              uuid primary key default gen_random_uuid(),
+  center_id       uuid not null references public.centers(id) on delete cascade,
+  part_id         part_id not null,
+  owner_id        uuid references public.profiles(id) on delete set null,
+  patient_id      text references public.patients(id) on delete set null,
+  patient_name    text,
+  patient_phone   text,
+  scheduled_at    timestamptz not null,
+  duration_min    integer not null default 30,
+  service_id      text references public.services(id) on delete set null,
+  service_name    text,
+  status          reservation_status not null default 'scheduled',
+  memo            text,
+  created_by      uuid references public.profiles(id) on delete set null,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz
+);
+
+create index reservations_center_scheduled_idx
+  on public.reservations (center_id, scheduled_at);
+create index reservations_part_scheduled_idx
+  on public.reservations (part_id, scheduled_at);
+create index reservations_patient_idx
+  on public.reservations (patient_id)
+  where patient_id is not null;
+
+alter table public.reservations enable row level security;
+
 -- helper: 현재 유저의 role
+-- SECURITY DEFINER로 정의해 RLS 무한 재귀 방지 (profiles 정책에서 호출되므로)
 create or replace function public.current_role() returns user_role
-language sql stable as $$
+language sql stable security definer set search_path = public as $$
   select role from public.profiles where id = auth.uid()
 $$;
 
 -- helper: 현재 유저의 center_id
 create or replace function public.current_center_id() returns uuid
-language sql stable as $$
+language sql stable security definer set search_path = public as $$
   select center_id from public.profiles where id = auth.uid()
 $$;
 
 -- helper: 현재 프로필 활성 여부. inactive owner는 업무 데이터 접근 불가.
 create or replace function public.current_profile_active() returns boolean
-language sql stable as $$
+language sql stable security definer set search_path = public as $$
   select coalesce(active, false) from public.profiles where id = auth.uid()
 $$;
 
@@ -299,6 +334,16 @@ create policy "services_read" on public.services for select using (true);
 create policy "services_admin_write" on public.services for all using (
   public.current_role() = 'admin'
 ) with check (public.current_role() = 'admin');
+-- 원장은 자기 파트 시술만 R/W (active 프로필 한정)
+create policy "services_owner_write" on public.services for all using (
+  public.current_role() = 'owner'
+  and part_id = public.current_part_id()
+  and public.current_profile_active()
+) with check (
+  public.current_role() = 'owner'
+  and part_id = public.current_part_id()
+  and public.current_profile_active()
+);
 create policy "products_read" on public.products for select using (true);
 create policy "products_admin_write" on public.products for all using (
   public.current_role() = 'admin'
@@ -515,6 +560,31 @@ create policy "visits_write" on public.visits for all using (
     and (public.current_part_id() is null or part_id = public.current_part_id())
   )
 );
+-- 예약 RLS
+create policy "reservations_read" on public.reservations for select using (
+  public.current_role() = 'admin'
+  or (
+    public.current_role() = 'owner'
+    and center_id = public.current_center_id()
+    and part_id = public.current_part_id()
+    and public.current_profile_active()
+  )
+);
+create policy "reservations_owner_write" on public.reservations for all using (
+  public.current_role() = 'owner'
+  and center_id = public.current_center_id()
+  and part_id = public.current_part_id()
+  and public.current_profile_active()
+) with check (
+  public.current_role() = 'owner'
+  and center_id = public.current_center_id()
+  and part_id = public.current_part_id()
+  and public.current_profile_active()
+);
+create policy "reservations_admin_write" on public.reservations for all using (
+  public.current_role() = 'admin'
+) with check (public.current_role() = 'admin');
+
 create policy "visit_sale_lines_via_visit" on public.visit_sale_lines for all using (
   exists (
     select 1 from public.visits v

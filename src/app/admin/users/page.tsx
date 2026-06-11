@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { getDataSource } from "@/lib/data";
-import { fmtDate } from "@/lib/format";
 import {
   PARTS,
   type Center,
@@ -39,6 +38,12 @@ export default function AdminUsersPage() {
     partId: "",
   });
   const [saving, setSaving] = useState(false);
+
+  // 승인 모달 — 가입 대기 원장에게 지점·파트 지정하며 승인
+  const [approving, setApproving] = useState<UserProfile | null>(null);
+  const [approveCenterId, setApproveCenterId] = useState("");
+  const [approvePartId, setApprovePartId] = useState<PartId | "">("");
+  const [approveSaving, setApproveSaving] = useState(false);
 
   async function load() {
     setError(null);
@@ -108,6 +113,55 @@ export default function AdminUsersPage() {
       await load();
     } catch (err) {
       alert(`업데이트 실패: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // 승인 대기 원장: 지점/파트 미지정 상태로 가입된 경우 → 모달로 한 번에 지정+승인
+  function openApprove(u: UserProfile) {
+    setApproving(u);
+    setApproveCenterId(u.centerId ?? centers[0]?.id ?? "");
+    setApprovePartId((u.partId ?? "") as PartId | "");
+  }
+
+  function closeApprove() {
+    setApproving(null);
+    setApproveCenterId("");
+    setApprovePartId("");
+  }
+
+  async function confirmApprove() {
+    if (!approving) return;
+    if (!approveCenterId) {
+      alert("지점을 선택해주세요.");
+      return;
+    }
+    if (!approvePartId) {
+      alert("파트를 선택해주세요.");
+      return;
+    }
+    setApproveSaving(true);
+    try {
+      const data = await getDataSource();
+      await data.users.update(approving.id, {
+        active: true,
+        centerId: approveCenterId,
+        partId: approvePartId as PartId,
+      });
+      closeApprove();
+      await load();
+    } catch (err) {
+      alert(`승인 실패: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setApproveSaving(false);
+    }
+  }
+
+  // 활성 토글 vs 승인 모달 분기 — owner이고 미승인이면 모달
+  function handleStatusClick(u: UserProfile) {
+    if (u.role === "owner" && !u.active) {
+      openApprove(u);
+    } else {
+      toggleActive(u);
     }
   }
 
@@ -329,7 +383,7 @@ export default function AdminUsersPage() {
                         <td className="py-2 text-right">
                           <button
                             type="button"
-                            onClick={() => toggleActive(u)}
+                            onClick={() => handleStatusClick(u)}
                             className={`mr-1 rounded border px-2 py-1 text-[11px] ${
                               u.active
                                 ? "border-sand-200 text-sand-600 hover:border-sand-400"
@@ -398,7 +452,7 @@ export default function AdminUsersPage() {
                     <div className="mt-3 flex gap-2">
                       <button
                         type="button"
-                        onClick={() => toggleActive(u)}
+                        onClick={() => handleStatusClick(u)}
                         className={`flex-1 rounded-lg border px-3 py-2 text-xs ${
                           u.active
                             ? "border-sand-200 bg-white text-sand-700 hover:border-sand-400"
@@ -429,6 +483,99 @@ export default function AdminUsersPage() {
       >
         ← 정산 대시보드로
       </Link>
+
+      {approving && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-sand-900/40 px-4 py-6 md:items-center"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeApprove();
+          }}
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+            <h3 className="text-base font-bold text-sand-900">원장 가입 승인</h3>
+            <p className="mt-1 text-xs text-sand-600">
+              {approving.displayName} ({approving.email})
+              <br />
+              지점과 파트를 지정하면 즉시 사용 가능합니다.
+            </p>
+
+            <div className="mt-4 space-y-3">
+              <label className="block text-xs">
+                <div className="mb-1 font-medium text-sand-600">지점 (병원) *</div>
+                <select
+                  value={approveCenterId}
+                  onChange={(e) => {
+                    setApproveCenterId(e.target.value);
+                    setApprovePartId("");
+                  }}
+                  className="w-full rounded-lg border border-sand-200 bg-white px-3 py-2 text-sm"
+                >
+                  {centers.length === 0 && (
+                    <option value="">지점 없음 — 먼저 지점 등록 필요</option>
+                  )}
+                  {centers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-xs">
+                <div className="mb-1 font-medium text-sand-600">
+                  파트 (이 지점에서 운영하는 파트만) *
+                </div>
+                <select
+                  value={approvePartId}
+                  onChange={(e) =>
+                    setApprovePartId(e.target.value as PartId | "")
+                  }
+                  className="w-full rounded-lg border border-sand-200 bg-white px-3 py-2 text-sm"
+                  disabled={!approveCenterId}
+                >
+                  <option value="">파트 선택</option>
+                  {(() => {
+                    const selected = centers.find(
+                      (c) => c.id === approveCenterId
+                    );
+                    const enabled = selected?.enabledParts ?? [];
+                    return PARTS.filter((p) => enabled.includes(p.id)).map(
+                      (p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.label}
+                        </option>
+                      )
+                    );
+                  })()}
+                </select>
+              </label>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeApprove}
+                className="rounded-lg border border-sand-200 px-4 py-2 text-sm text-sand-700"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={confirmApprove}
+                disabled={approveSaving}
+                className="rounded-lg bg-moss-600 px-4 py-2 text-sm font-semibold text-white hover:bg-moss-700 disabled:opacity-60"
+              >
+                {approveSaving ? "승인 중..." : "승인하기"}
+              </button>
+            </div>
+
+            <p className="mt-3 text-[11px] text-sand-500">
+              💡 신청 시 입력된 연락처는 가입 신청서에 저장되어 있습니다.
+              정산 정보는 승인 후 원장님이 직접 입력합니다.
+            </p>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

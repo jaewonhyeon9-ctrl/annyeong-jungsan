@@ -2,17 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
+import { getDataSource } from "@/lib/data";
 import { fmtWon } from "@/lib/format";
 import {
-  addCustomService,
-  CustomService,
-  getCustomServices,
-  isBuiltinService,
-  removeCustomService,
-  SERVICES,
-  updateCustomService,
+  invalidateServicesCache,
+  useServicesByPart,
 } from "@/lib/services";
-import { PARTS, type PartId } from "@/lib/types";
+import { PARTS, type PartId, type ServiceRecord } from "@/lib/types";
 import { useCurrentProfile } from "@/lib/use-current-profile";
 
 type FormState = {
@@ -36,14 +32,9 @@ function autoId(name: string, partId: PartId): string {
 }
 
 export default function OwnerServicesPage() {
-  const { profile, loaded } = useCurrentProfile();
-  const [tick, setTick] = useState(0); // force re-render after mutation
-  const [showNew, setShowNew] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<FormState>(emptyForm());
-  const [error, setError] = useState<string | null>(null);
+  const { profile, loaded: profileLoaded } = useCurrentProfile();
 
-  // 원장: 자기 파트만. admin/그 외: 전체 파트 (선택 가능)
+  // 원장은 자기 파트만 수정 가능. admin이 와도 자기 선택 파트에서 수정.
   const myPart: PartId | null = useMemo(() => {
     if (profile?.role === "owner" && profile.partId) return profile.partId;
     return null;
@@ -54,23 +45,19 @@ export default function OwnerServicesPage() {
     if (myPart) setActivePart(myPart);
   }, [myPart]);
 
-  const myBuiltins = useMemo(
-    () => SERVICES.filter((s) => s.partId === activePart),
-    [activePart, tick]
-  );
+  const { services, loaded, refresh } = useServicesByPart(activePart);
 
-  const myCustoms = useMemo(
-    () =>
-      getCustomServices()
-        .filter((s) => s.partId === activePart)
-        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
-    // tick 변경 시 재계산
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [activePart, tick]
-  );
+  const [showNew, setShowNew] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<FormState>(emptyForm());
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  function refresh() {
-    setTick((n) => n + 1);
+  function reset() {
+    setEditingId(null);
+    setForm(emptyForm());
+    setShowNew(false);
+    setError(null);
   }
 
   function startNew() {
@@ -80,7 +67,7 @@ export default function OwnerServicesPage() {
     setError(null);
   }
 
-  function startEdit(s: CustomService) {
+  function startEdit(s: ServiceRecord) {
     setEditingId(s.id);
     setForm({
       id: s.id,
@@ -92,70 +79,75 @@ export default function OwnerServicesPage() {
     setError(null);
   }
 
-  function reset() {
-    setEditingId(null);
-    setForm(emptyForm());
-    setShowNew(false);
-    setError(null);
-  }
-
-  function handleSave() {
+  async function handleSave() {
     setError(null);
     const name = form.name.trim();
     if (!name) {
       setError("시술 이름을 입력해주세요.");
       return;
     }
-    const id = (form.id.trim() || autoId(name, activePart)).trim();
-    const price = Number(form.defaultPrice) || 0;
-    const sortOrder = Number(form.sortOrder) || 0;
-
+    setSaving(true);
     try {
+      const data = await getDataSource();
       if (editingId) {
-        updateCustomService(editingId, {
+        await data.services.update(editingId, {
           name,
-          defaultPrice: price,
-          sortOrder,
-          partId: activePart,
+          defaultPrice: Number(form.defaultPrice) || 0,
+          sortOrder: Number(form.sortOrder) || 0,
         });
       } else {
-        addCustomService({
+        const id = form.id.trim() || autoId(name, activePart);
+        await data.services.create({
           id,
           partId: activePart,
           name,
-          defaultPrice: price,
-          sortOrder,
-          createdBy: profile?.id,
+          defaultPrice: Number(form.defaultPrice) || 0,
+          sortOrder: Number(form.sortOrder) || 0,
         });
       }
-      refresh();
+      invalidateServicesCache();
+      await refresh();
       reset();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
     }
   }
 
-  function handleToggleActive(s: CustomService) {
-    updateCustomService(s.id, { active: !s.active });
-    refresh();
+  async function handleToggleActive(s: ServiceRecord) {
+    try {
+      const data = await getDataSource();
+      await data.services.update(s.id, { active: !s.active });
+      invalidateServicesCache();
+      await refresh();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    }
   }
 
-  function handleDelete(s: CustomService) {
+  async function handleDelete(s: ServiceRecord) {
     if (
       !window.confirm(
         `시술 "${s.name}" 을(를) 삭제할까요?\n과거 매출 기록은 그대로 남고, 앞으로는 선택 목록에서 사라집니다.`
       )
     )
       return;
-    removeCustomService(s.id);
-    refresh();
+    try {
+      const data = await getDataSource();
+      await data.services.delete(s.id);
+      invalidateServicesCache();
+      await refresh();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    }
   }
 
-  if (!loaded) {
+  if (!profileLoaded) {
     return <div className="py-12 text-center text-sm text-sand-500">로딩 중...</div>;
   }
 
-  const showPartSwitcher = !myPart; // admin/일반 사용자는 파트 선택 가능
+  const showPartSwitcher = !myPart; // owner는 자기 파트 고정, 그 외는 파트 선택
 
   return (
     <div className="space-y-5">
@@ -163,8 +155,7 @@ export default function OwnerServicesPage() {
         <div>
           <h2 className="text-lg font-bold text-sand-900">시술 품목</h2>
           <p className="mt-0.5 text-xs text-sand-500">
-            원장이 자기 파트에서 직접 시술을 추가/수정할 수 있어요. 등록한
-            시술은 빠른매출·방문 차트에 자동으로 보입니다.
+            등록한 시술은 모든 디바이스에서 빠른매출·방문 차트에 즉시 보입니다.
           </p>
         </div>
         <button
@@ -256,30 +247,32 @@ export default function OwnerServicesPage() {
               <button
                 type="button"
                 onClick={handleSave}
-                className="rounded-lg bg-sand-800 px-4 py-2 text-sm font-semibold text-white hover:bg-sand-900"
+                disabled={saving}
+                className="rounded-lg bg-sand-800 px-4 py-2 text-sm font-semibold text-white hover:bg-sand-900 disabled:opacity-60"
               >
-                {editingId ? "수정 저장" : "등록"}
+                {saving ? "저장 중..." : editingId ? "수정 저장" : "등록"}
               </button>
             </div>
           </CardBody>
         </Card>
       )}
 
-      {/* 내가 등록한 시술 */}
       <Card>
         <CardHeader>
           <CardTitle>
-            내가 등록한 시술 ({myCustoms.length})
+            {PARTS.find((p) => p.id === activePart)?.label ?? activePart} 시술 ({services.length})
           </CardTitle>
         </CardHeader>
         <CardBody>
-          {myCustoms.length === 0 ? (
+          {!loaded ? (
+            <div className="py-6 text-center text-xs text-sand-500">로딩 중...</div>
+          ) : services.length === 0 ? (
             <div className="py-6 text-center text-xs text-sand-500">
-              아직 등록한 시술이 없어요. 위 “+ 시술 등록” 으로 시작하세요.
+              아직 등록된 시술이 없어요. 위 “+ 시술 등록” 으로 시작하세요.
             </div>
           ) : (
             <ul className="space-y-1.5">
-              {myCustoms.map((s) => (
+              {services.map((s) => (
                 <li
                   key={s.id}
                   className={`flex items-center justify-between rounded-lg px-3 py-2 ${
@@ -321,40 +314,6 @@ export default function OwnerServicesPage() {
                       🗑
                     </button>
                   </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardBody>
-      </Card>
-
-      {/* 기본 카탈로그 (참고용) */}
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            기본 카탈로그 ({myBuiltins.length}){" "}
-            <span className="ml-1 text-[10px] font-normal text-sand-400">
-              (회사 공통 — 수정은 본사 관리자)
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardBody>
-          {myBuiltins.length === 0 ? (
-            <div className="py-4 text-center text-xs text-sand-500">
-              이 파트의 기본 시술이 없어요.
-            </div>
-          ) : (
-            <ul className="space-y-1">
-              {myBuiltins.map((s) => (
-                <li
-                  key={s.id}
-                  className="flex items-center justify-between rounded-lg bg-sand-50 px-3 py-2 text-sand-600"
-                >
-                  <div>
-                    <span className="text-sm font-medium">{s.name}</span>
-                    <span className="ml-2 text-[10px] text-sand-400">{s.id}</span>
-                  </div>
-                  <div className="text-xs tabular">{fmtWon(s.defaultPrice)}</div>
                 </li>
               ))}
             </ul>

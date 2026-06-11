@@ -1,5 +1,6 @@
 // 데이터 모드는 명시적으로만 전환한다.
 // 기본값은 localStorage mock, NEXT_PUBLIC_DATA_SOURCE=supabase 일 때만 Supabase 사용.
+// build trigger: 2026-06-07
 
 import type { DataSource } from "./source";
 import { mockDataSource } from "./mock";
