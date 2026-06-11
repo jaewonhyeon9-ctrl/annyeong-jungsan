@@ -29,6 +29,17 @@
 - Live URL: `https://annyeong-jungsan.vercel.app` (aliased)
 - 검증: /, /signup, /login 모두 HTTP 200
 
+### E2E 시연 통과 ✅
+- `scripts/e2e-signup-approval.mjs` — production에 가짜 원장 1명 가입 → 승인 → 로그인 → 정리 자동 시나리오
+- 6단계 모두 통과:
+  1. `/api/users` POST 공개 가입 → owner / active=false / center·part null
+  2. DB 가입 대기 상태 (admin 화면에서 보이는 그대로)
+  3. 활성 지점 "안녕메디컬 본점" + 파트 scalp 선택
+  4. 승인 패치 (active=true + center_id + part_id 한 번에 — 모달 버튼과 동일)
+  5. 새 계정으로 anon 로그인 → 세션 정상 생성
+  6. `auth.admin.deleteUser` 로 cascade 정리 → DB 흔적 없음
+- 다음 검증 시 한 줄: `node scripts/e2e-signup-approval.mjs`
+
 ### 알려진 환경 이슈 (코드 아님)
 - 로컬 Windows `next build` — webpack readlink **EISDIR** (route.ts 경로). Linux/Vercel은 정상.
 - 로컬 Codex CLI 0.132 review — Windows sandbox **CreateProcessAsUserW 1312** 에러로 모든 exec 차단. WSL이나 다른 환경 필요.
