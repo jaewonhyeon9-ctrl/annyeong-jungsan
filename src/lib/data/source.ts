@@ -80,6 +80,7 @@ export interface DataSource {
     create(input: UserCreateInput): Promise<UserProfile>;
     update(id: string, patch: Partial<UserProfile>): Promise<UserProfile>;
     resetPassword(id: string, newPassword: string): Promise<void>;
+    delete(id: string): Promise<void>;
   };
   centers: {
     list(): Promise<Center[]>;

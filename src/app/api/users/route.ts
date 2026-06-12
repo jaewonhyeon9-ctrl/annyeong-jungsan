@@ -240,3 +240,88 @@ export async function PATCH(request: Request) {
 
   return NextResponse.json({ ok: true });
 }
+
+// 사용자 삭제 — admin 만. auth.users 삭제 시 profiles 는 cascade 정리.
+// visits/daily_entries.created_by 는 auth.users 참조(no cascade)라 먼저 null 처리.
+export async function DELETE(request: Request) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseAnon || !serviceRoleKey) {
+    return NextResponse.json(
+      {
+        error:
+          "SUPABASE_SERVICE_ROLE_KEY가 설정되지 않았습니다. Supabase Dashboard > Project Settings > API에서 service_role 키를 .env.local에 추가해주세요.",
+      },
+      { status: 500 }
+    );
+  }
+
+  const input = (await request.json().catch(() => ({}))) as { id?: string };
+  if (!input.id) {
+    return badRequest("삭제할 사용자 ID가 필요합니다.");
+  }
+
+  const cookieStore = await cookies();
+  const supabase = createServerClient(supabaseUrl, supabaseAnon, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll() {
+        // Route handlers do not need to mutate auth cookies here.
+      },
+    },
+  });
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
+  }
+  if (input.id === user.id) {
+    return badRequest("본인 계정은 삭제할 수 없습니다.");
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (profile?.role !== "admin") {
+    return NextResponse.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
+  }
+
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+
+  // created_by 흔적 정리 (auth.users 참조, cascade 없음)
+  const { error: vErr } = await admin
+    .from("visits")
+    .update({ created_by: null })
+    .eq("created_by", input.id);
+  if (vErr) {
+    return NextResponse.json({ error: vErr.message }, { status: 500 });
+  }
+  const { error: dErr } = await admin
+    .from("daily_entries")
+    .update({ created_by: null })
+    .eq("created_by", input.id);
+  if (dErr) {
+    return NextResponse.json({ error: dErr.message }, { status: 500 });
+  }
+
+  // auth.users 삭제 → profiles cascade 정리
+  const { error } = await admin.auth.admin.deleteUser(input.id);
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  return NextResponse.json({ ok: true });
+}

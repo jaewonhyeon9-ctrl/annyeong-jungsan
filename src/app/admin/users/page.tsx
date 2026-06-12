@@ -216,6 +216,22 @@ export default function AdminUsersPage() {
     }
   }
 
+  async function deleteUser(u: UserProfile) {
+    if (
+      !confirm(
+        `${u.displayName} (${u.email}) 계정을 삭제할까요?\n로그인 계정이 영구 삭제됩니다. 이 작업은 되돌릴 수 없습니다.`
+      )
+    )
+      return;
+    try {
+      const data = await getDataSource();
+      await data.users.delete(u.id);
+      await load();
+    } catch (err) {
+      alert(`삭제 실패: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   async function resetPassword(u: UserProfile) {
     const pwd = prompt(`${u.displayName} 의 새 비밀번호 입력 (6자 이상):`);
     if (!pwd) return;
@@ -455,9 +471,16 @@ export default function AdminUsersPage() {
                           <button
                             type="button"
                             onClick={() => resetPassword(u)}
-                            className="rounded border border-sand-200 px-2 py-1 text-[11px] hover:border-sand-400"
+                            className="mr-1 rounded border border-sand-200 px-2 py-1 text-[11px] hover:border-sand-400"
                           >
                             비번 리셋
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteUser(u)}
+                            className="rounded border border-clay-300 px-2 py-1 text-[11px] text-clay-700 hover:border-clay-500 hover:bg-clay-500/10"
+                          >
+                            삭제
                           </button>
                         </td>
                       </tr>
@@ -536,6 +559,13 @@ export default function AdminUsersPage() {
                         className="flex-1 rounded-lg border border-sand-200 bg-white px-3 py-2 text-xs hover:border-sand-400"
                       >
                         비번 리셋
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteUser(u)}
+                        className="flex-1 rounded-lg border border-clay-300 bg-white px-3 py-2 text-xs text-clay-700 hover:border-clay-500 hover:bg-clay-500/10"
+                      >
+                        삭제
                       </button>
                     </div>
                   </li>

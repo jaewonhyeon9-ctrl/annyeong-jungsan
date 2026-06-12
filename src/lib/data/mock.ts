@@ -309,6 +309,11 @@ export const mockDataSource: DataSource = {
     async resetPassword(_id, _newPassword) {
       // Mock mode — pretend to reset
     },
+    async delete(id) {
+      commit((store) => {
+        store.users = store.users.filter((u) => u.id !== id);
+      });
+    },
   },
 
   centers: {

@@ -588,6 +588,17 @@ export const supabaseDataSource: DataSource = {
         throw new Error(result.error ?? "비밀번호 재설정에 실패했습니다.");
       }
     },
+    async delete(id) {
+      const response = await fetch("/api/users", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(result.error ?? "사용자 삭제에 실패했습니다.");
+      }
+    },
   },
 
   centers: {
