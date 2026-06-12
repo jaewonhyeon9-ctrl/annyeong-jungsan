@@ -45,6 +45,12 @@ export default function AdminUsersPage() {
   const [approvePartId, setApprovePartId] = useState<PartId | "">("");
   const [approveSaving, setApproveSaving] = useState(false);
 
+  // 수정 모달 — 이미 승인된 원장의 지점·파트 변경
+  const [editing, setEditing] = useState<UserProfile | null>(null);
+  const [editCenterId, setEditCenterId] = useState("");
+  const [editPartId, setEditPartId] = useState<PartId | "">("");
+  const [editSaving, setEditSaving] = useState(false);
+
   async function load() {
     setError(null);
     try {
@@ -156,12 +162,57 @@ export default function AdminUsersPage() {
     }
   }
 
-  // 활성 토글 vs 승인 모달 분기 — owner이고 미승인이면 모달
+  // 활성 토글 vs 승인 모달 분기
+  // - owner이고 미승인 + 지점·파트 미지정 → 가입 대기 → 승인 모달
+  // - owner이고 미승인 + 이미 지점·파트 있음 → 정지 풀기 → 단순 토글
+  // - owner 활성 → 정지하기 → 단순 토글
+  // - admin → 단순 토글
   function handleStatusClick(u: UserProfile) {
-    if (u.role === "owner" && !u.active) {
+    const isPendingSignup =
+      u.role === "owner" && !u.active && (!u.centerId || !u.partId);
+    if (isPendingSignup) {
       openApprove(u);
     } else {
       toggleActive(u);
+    }
+  }
+
+  // 수정 모달 — 승인된 원장의 지점/파트를 변경
+  function openEdit(u: UserProfile) {
+    setEditing(u);
+    setEditCenterId(u.centerId ?? centers[0]?.id ?? "");
+    setEditPartId((u.partId ?? "") as PartId | "");
+  }
+
+  function closeEdit() {
+    setEditing(null);
+    setEditCenterId("");
+    setEditPartId("");
+  }
+
+  async function confirmEdit() {
+    if (!editing) return;
+    if (!editCenterId) {
+      alert("지점을 선택해주세요.");
+      return;
+    }
+    if (!editPartId) {
+      alert("파트를 선택해주세요.");
+      return;
+    }
+    setEditSaving(true);
+    try {
+      const data = await getDataSource();
+      await data.users.update(editing.id, {
+        centerId: editCenterId,
+        partId: editPartId as PartId,
+      });
+      closeEdit();
+      await load();
+    } catch (err) {
+      alert(`수정 실패: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setEditSaving(false);
     }
   }
 
@@ -392,6 +443,15 @@ export default function AdminUsersPage() {
                           >
                             {u.active ? "정지하기" : "승인하기"}
                           </button>
+                          {u.role === "owner" && (
+                            <button
+                              type="button"
+                              onClick={() => openEdit(u)}
+                              className="mr-1 rounded border border-sand-200 px-2 py-1 text-[11px] hover:border-sand-400"
+                            >
+                              지점/파트 수정
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => resetPassword(u)}
@@ -449,7 +509,7 @@ export default function AdminUsersPage() {
                         </div>
                       </div>
                     </div>
-                    <div className="mt-3 flex gap-2">
+                    <div className="mt-3 flex flex-wrap gap-2">
                       <button
                         type="button"
                         onClick={() => handleStatusClick(u)}
@@ -461,6 +521,15 @@ export default function AdminUsersPage() {
                       >
                         {u.active ? "정지하기" : "승인하기"}
                       </button>
+                      {u.role === "owner" && (
+                        <button
+                          type="button"
+                          onClick={() => openEdit(u)}
+                          className="flex-1 rounded-lg border border-sand-200 bg-white px-3 py-2 text-xs hover:border-sand-400"
+                        >
+                          지점/파트 수정
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => resetPassword(u)}
@@ -572,6 +641,85 @@ export default function AdminUsersPage() {
               💡 신청 시 입력된 연락처는 가입 신청서에 저장되어 있습니다.
               정산 정보는 승인 후 원장님이 직접 입력합니다.
             </p>
+          </div>
+        </div>
+      )}
+
+      {editing && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-sand-900/40 px-4 py-6 md:items-center"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeEdit();
+          }}
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+            <h3 className="text-base font-bold text-sand-900">지점/파트 수정</h3>
+            <p className="mt-1 text-xs text-sand-600">
+              {editing.displayName} ({editing.email})
+            </p>
+
+            <div className="mt-4 space-y-3">
+              <label className="block text-xs">
+                <div className="mb-1 font-medium text-sand-600">지점 (병원) *</div>
+                <select
+                  value={editCenterId}
+                  onChange={(e) => {
+                    setEditCenterId(e.target.value);
+                    setEditPartId("");
+                  }}
+                  className="w-full rounded-lg border border-sand-200 bg-white px-3 py-2 text-sm"
+                >
+                  {centers.length === 0 && (
+                    <option value="">지점 없음 — 먼저 지점 등록 필요</option>
+                  )}
+                  {centers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-xs">
+                <div className="mb-1 font-medium text-sand-600">
+                  파트 (이 지점에서 운영하는 파트만) *
+                </div>
+                <select
+                  value={editPartId}
+                  onChange={(e) => setEditPartId(e.target.value as PartId | "")}
+                  className="w-full rounded-lg border border-sand-200 bg-white px-3 py-2 text-sm"
+                  disabled={!editCenterId}
+                >
+                  <option value="">파트 선택</option>
+                  {(() => {
+                    const selected = centers.find((c) => c.id === editCenterId);
+                    const enabled = selected?.enabledParts ?? [];
+                    return PARTS.filter((p) => enabled.includes(p.id)).map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.label}
+                      </option>
+                    ));
+                  })()}
+                </select>
+              </label>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeEdit}
+                className="rounded-lg border border-sand-200 px-4 py-2 text-sm text-sand-700"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={confirmEdit}
+                disabled={editSaving}
+                className="rounded-lg bg-sand-800 px-4 py-2 text-sm font-semibold text-white hover:bg-sand-900 disabled:opacity-60"
+              >
+                {editSaving ? "저장 중..." : "저장"}
+              </button>
+            </div>
           </div>
         </div>
       )}
