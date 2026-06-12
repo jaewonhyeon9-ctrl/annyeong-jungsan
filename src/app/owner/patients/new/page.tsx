@@ -457,6 +457,8 @@ export default function NewPatientPage() {
               <input
                 type="date"
                 value={birthDate}
+                min="1900-01-01"
+                max={todayKST()}
                 onChange={(e) => setBirthDate(e.target.value)}
                 className="flex-1 rounded-lg border border-sand-200 bg-white px-3 py-2 text-sm focus:border-clay-400 focus:outline-none"
               />
