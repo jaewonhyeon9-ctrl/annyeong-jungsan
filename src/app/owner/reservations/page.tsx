@@ -384,6 +384,9 @@ export default function OwnerReservationsPage() {
           services={allServices}
           myPart={myPart}
           knownPractitioners={knownPractitioners}
+          defaultPractitioner={
+            profile?.role === "owner" ? profile.displayName : ""
+          }
           initial={editing}
           onClose={() => {
             setShowForm(false);
@@ -581,6 +584,7 @@ function ReservationForm({
   services,
   myPart,
   knownPractitioners,
+  defaultPractitioner,
   initial,
   onClose,
   onSaved,
@@ -591,6 +595,7 @@ function ReservationForm({
   services: ReturnType<typeof useAllServices>["services"];
   myPart: PartId | null;
   knownPractitioners: string[];
+  defaultPractitioner: string;
   initial: Reservation | null;
   onClose: () => void;
   onSaved: () => void;
@@ -612,7 +617,7 @@ function ReservationForm({
   };
   const [form, setForm] = useState<FormState>(() => ({
     ownerId: initial?.ownerId ?? owners[0]?.id ?? null,
-    practitionerName: initial?.practitionerName ?? "",
+    practitionerName: initial?.practitionerName ?? defaultPractitioner,
     partId: (initial?.partId ?? myPart ?? "scalp") as PartId,
     patientId: initial?.patientId ?? null,
     patientName: initial?.patientName ?? "",
