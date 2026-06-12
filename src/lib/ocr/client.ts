@@ -2,7 +2,7 @@
 
 import type { OcrResult } from "./types";
 
-export type OcrHint = "chart" | "receipt" | "pos";
+export type OcrHint = "chart" | "receipt" | "pos" | "menu";
 
 export async function ocrFromFile(
   file: File,

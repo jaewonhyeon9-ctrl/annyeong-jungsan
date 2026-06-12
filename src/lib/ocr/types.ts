@@ -2,7 +2,12 @@
 
 import type { InflowChannel, PartId, Severity, Pregnancy } from "@/lib/types";
 
-export type OcrClassification = "chart" | "receipt" | "pos" | "unknown";
+export type OcrClassification =
+  | "chart"
+  | "receipt"
+  | "pos"
+  | "menu"
+  | "unknown";
 
 export interface ChartOcrData {
   inflowChannels: InflowChannel[];
@@ -50,10 +55,21 @@ export interface PosOcrData {
   totals: { cash: number; card: number };
 }
 
+// 시술 가격표 / 메뉴판 — 시술 품목 일괄 등록용
+export interface MenuLineOcr {
+  name: string;
+  partGuess: PartId | null;
+  price: number | null;
+}
+
+export interface MenuOcrData {
+  items: MenuLineOcr[];
+}
+
 export interface OcrResult {
   classification: OcrClassification;
   confidence: number; // 0~1
-  data: ChartOcrData | ReceiptOcrData | PosOcrData | null;
+  data: ChartOcrData | ReceiptOcrData | PosOcrData | MenuOcrData | null;
   warnings: string[];
   // 메타
   mock?: boolean;

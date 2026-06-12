@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import type {
   ChartOcrData,
+  MenuOcrData,
   OcrClassification,
   OcrResult,
   PosOcrData,
@@ -12,6 +13,7 @@ const VALID_CLASSIFICATIONS: OcrClassification[] = [
   "chart",
   "receipt",
   "pos",
+  "menu",
   "unknown",
 ];
 
@@ -31,6 +33,7 @@ const OCR_SYSTEM_PROMPT = `당신은 한국 의료/뷰티센터 정산앱의 OCR
 - "chart": 환자 관리 차트 (KMPA 양식 등). 방문경로 + 의료 체크리스트
 - "receipt": 카드 매출전표 / 영수증
 - "pos": POS 일일 마감표 / 매출 정리표
+- "menu": 시술 가격표 / 메뉴판 / 시술 단가표 (시술명 + 가격 목록)
 - "unknown": 분류 불가
 
 ## 의료법 — 안전 모드 (필수)
@@ -85,12 +88,18 @@ scalp(두피) | permanent_makeup(반영구) | smp | pedicure(패디큐어) | ski
   items: [{ serviceName, partGuess, cash, card }],
   totals: { cash, card } }
 
+### menu 데이터 필드 (시술 가격표)
+{ items: [{ name, partGuess, price }] }
+- name: 시술명 (그대로). 옵션/설명 줄은 제외하고 실제 시술 품목만.
+- partGuess: 위 PartId 중 추정, 모르면 null.
+- price: 기본가(원), 숫자만 (쉼표·"원"·"₩" 제거). 범위(예 "5~7만")면 최저가. 모르면 null.
+
 확실하지 않은 필드는 null. 미확인 체크박스는 절대 true로 단정 X.`;
 
 interface OcrRequestBody {
   imageBase64: string;
   imageMediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif";
-  hint?: "chart" | "receipt" | "pos";
+  hint?: "chart" | "receipt" | "pos" | "menu";
 }
 
 export async function POST(req: Request) {
@@ -194,6 +203,7 @@ export async function POST(req: Request) {
         | ChartOcrData
         | ReceiptOcrData
         | PosOcrData
+        | MenuOcrData
         | null,
       warnings: Array.isArray(parsed.warnings)
         ? (parsed.warnings as string[])
@@ -241,7 +251,18 @@ function extractJson(text: string): {
   }
 }
 
-function mockData(hint: "chart" | "receipt" | "pos"): OcrResult["data"] {
+function mockData(
+  hint: "chart" | "receipt" | "pos" | "menu"
+): OcrResult["data"] {
+  if (hint === "menu") {
+    return {
+      items: [
+        { name: "스케일링", partGuess: "scalp", price: 70000 },
+        { name: "두피 레이저", partGuess: "scalp", price: 120000 },
+        { name: "눈썹 반영구", partGuess: "permanent_makeup", price: 250000 },
+      ],
+    };
+  }
   if (hint === "chart") {
     return {
       inflowChannels: ["instagram", "referral"],

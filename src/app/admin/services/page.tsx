@@ -1,10 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import { invalidateServicesCache } from "@/lib/services";
 import { PARTS, type PartId } from "@/lib/types";
+import {
+  genServiceId,
+  parseServicesExcel,
+  type ServiceDraft,
+} from "@/lib/services-import";
+import { ocrFromFile } from "@/lib/ocr/client";
+import type { MenuOcrData } from "@/lib/ocr/types";
+
+// 검토용 초안 행 — include 체크로 등록 여부 선택
+type DraftRow = ServiceDraft & { include: boolean };
 
 type ServiceRow = {
   id: string;
@@ -31,6 +41,15 @@ export default function AdminServicesPage() {
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // 일괄 가져오기 (엑셀/사진 OCR)
+  const [showImport, setShowImport] = useState(false);
+  const [drafts, setDrafts] = useState<DraftRow[]>([]);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importMsg, setImportMsg] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const excelInputRef = useRef<HTMLInputElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   async function load() {
     setError(null);
@@ -132,6 +151,125 @@ export default function AdminServicesPage() {
     load();
   }
 
+  function openImport() {
+    setShowImport(true);
+    setDrafts([]);
+    setImportMsg(null);
+  }
+
+  function closeImport() {
+    setShowImport(false);
+    setDrafts([]);
+    setImportMsg(null);
+    if (excelInputRef.current) excelInputRef.current.value = "";
+    if (photoInputRef.current) photoInputRef.current.value = "";
+  }
+
+  async function handleExcelFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportBusy(true);
+    setImportMsg(null);
+    try {
+      const parsed = await parseServicesExcel(file);
+      if (parsed.length === 0) {
+        setImportMsg(
+          "행을 찾지 못했습니다. 첫 행에 '파트 / 이름 / 가격' 머리글이 있는지 확인하세요."
+        );
+      } else {
+        setDrafts(parsed.map((d) => ({ ...d, include: true })));
+        setImportMsg(`엑셀에서 ${parsed.length}개 항목을 읽었습니다. 검토 후 등록하세요.`);
+      }
+    } catch (err) {
+      setImportMsg(
+        `엑셀 읽기 실패: ${err instanceof Error ? err.message : String(err)}`
+      );
+    } finally {
+      setImportBusy(false);
+      if (excelInputRef.current) excelInputRef.current.value = "";
+    }
+  }
+
+  async function handlePhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportBusy(true);
+    setImportMsg(null);
+    try {
+      const result = await ocrFromFile(file, "menu");
+      const items =
+        result.data && "items" in result.data
+          ? (result.data as MenuOcrData).items
+          : [];
+      if (items.length === 0) {
+        setImportMsg(
+          "사진에서 시술 항목을 찾지 못했습니다. 가격표가 선명하게 나오게 다시 촬영해보세요."
+        );
+      } else {
+        setDrafts(
+          items.map((it) => ({
+            partId: it.partGuess ?? null,
+            name: it.name,
+            price: it.price ?? 0,
+            include: true,
+          }))
+        );
+        const warn = result.warnings?.length
+          ? ` (참고: ${result.warnings.join(", ")})`
+          : "";
+        setImportMsg(
+          `사진에서 ${items.length}개 항목을 인식했습니다. 파트·가격을 확인 후 등록하세요.${warn}`
+        );
+      }
+    } catch (err) {
+      setImportMsg(
+        `사진 인식 실패: ${err instanceof Error ? err.message : String(err)}`
+      );
+    } finally {
+      setImportBusy(false);
+      if (photoInputRef.current) photoInputRef.current.value = "";
+    }
+  }
+
+  function updateDraft(idx: number, patch: Partial<DraftRow>) {
+    setDrafts((ds) => ds.map((d, i) => (i === idx ? { ...d, ...patch } : d)));
+  }
+
+  async function importSelected() {
+    const selected = drafts.filter((d) => d.include);
+    if (selected.length === 0) {
+      alert("등록할 항목을 선택하세요.");
+      return;
+    }
+    const missingPart = selected.filter((d) => !d.partId);
+    if (missingPart.length > 0) {
+      alert(`파트가 지정되지 않은 항목이 ${missingPart.length}개 있습니다. 파트를 먼저 선택하세요.`);
+      return;
+    }
+    setImporting(true);
+    try {
+      const existing = new Set(rows.map((r) => r.id));
+      const payload = selected.map((d, i) => ({
+        id: genServiceId(d.partId as PartId, d.name, existing),
+        part_id: d.partId as PartId,
+        name: d.name.trim(),
+        default_price: Number(d.price) || 0,
+        sort_order: d.sortOrder ?? i,
+      }));
+      const sb = createClient();
+      const { error } = await sb.from("services").insert(payload);
+      if (error) throw error;
+      invalidateServicesCache();
+      closeImport();
+      await load();
+      alert(`${payload.length}개 시술을 등록했습니다.`);
+    } catch (err) {
+      alert(`등록 실패: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setImporting(false);
+    }
+  }
+
   const partLabel = (id: PartId) => PARTS.find((p) => p.id === id)?.label ?? id;
   const byPart: Record<string, ServiceRow[]> = {};
   for (const r of rows) (byPart[r.part_id] ||= []).push(r);
@@ -140,14 +278,178 @@ export default function AdminServicesPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold text-sand-900">시술 품목</h2>
-        <button
-          type="button"
-          onClick={() => (showNew ? reset() : setShowNew(true))}
-          className="rounded-lg bg-clay-500 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-clay-600"
-        >
-          {showNew ? "닫기" : "+ 신규 시술"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => (showImport ? closeImport() : openImport())}
+            className="rounded-lg border border-sand-300 px-4 py-2 text-xs font-semibold text-sand-700 hover:border-sand-500"
+          >
+            {showImport ? "닫기" : "📥 엑셀/사진 가져오기"}
+          </button>
+          <button
+            type="button"
+            onClick={() => (showNew ? reset() : setShowNew(true))}
+            className="rounded-lg bg-clay-500 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-clay-600"
+          >
+            {showNew ? "닫기" : "+ 신규 시술"}
+          </button>
+        </div>
       </div>
+
+      {showImport && (
+        <Card>
+          <CardHeader>
+            <CardTitle>엑셀 / 사진으로 일괄 등록</CardTitle>
+          </CardHeader>
+          <CardBody className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-xl border border-sand-200 p-3">
+                <div className="mb-1 text-sm font-semibold text-sand-800">
+                  📊 엑셀 / CSV
+                </div>
+                <p className="mb-2 text-xs text-sand-500">
+                  첫 행 머리글: <b>파트 · 이름 · 가격</b> (정렬 선택). 한글 머리글 OK.
+                </p>
+                <input
+                  ref={excelInputRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={handleExcelFile}
+                  disabled={importBusy}
+                  className="block w-full text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-sand-800 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-white hover:file:bg-sand-900"
+                />
+              </div>
+              <div className="rounded-xl border border-sand-200 p-3">
+                <div className="mb-1 text-sm font-semibold text-sand-800">
+                  📷 사진 (가격표 OCR)
+                </div>
+                <p className="mb-2 text-xs text-sand-500">
+                  시술 가격표·메뉴판을 촬영하면 자동 인식합니다.
+                </p>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handlePhotoFile}
+                  disabled={importBusy}
+                  className="block w-full text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-clay-500 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-white hover:file:bg-clay-600"
+                />
+              </div>
+            </div>
+
+            {importBusy && (
+              <div className="text-center text-sm text-sand-500">
+                읽는 중...
+              </div>
+            )}
+            {importMsg && (
+              <div className="rounded-lg bg-sand-100 px-3 py-2 text-xs text-sand-700">
+                {importMsg}
+              </div>
+            )}
+
+            {drafts.length > 0 && (
+              <div className="space-y-2">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-sand-200 text-left text-[11px] uppercase tracking-wider text-sand-500">
+                        <th className="py-2 w-10">등록</th>
+                        <th className="py-2">파트</th>
+                        <th className="py-2">이름</th>
+                        <th className="py-2 text-right">기본가</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {drafts.map((d, i) => (
+                        <tr
+                          key={i}
+                          className={`border-b border-sand-100 ${
+                            d.include ? "" : "opacity-40"
+                          }`}
+                        >
+                          <td className="py-1.5">
+                            <input
+                              type="checkbox"
+                              checked={d.include}
+                              onChange={(e) =>
+                                updateDraft(i, { include: e.target.checked })
+                              }
+                            />
+                          </td>
+                          <td className="py-1.5">
+                            <select
+                              value={d.partId ?? ""}
+                              onChange={(e) =>
+                                updateDraft(i, {
+                                  partId: (e.target.value || null) as
+                                    | PartId
+                                    | null,
+                                })
+                              }
+                              className={`rounded border bg-white px-2 py-1 text-xs ${
+                                d.partId
+                                  ? "border-sand-200"
+                                  : "border-clay-400 bg-clay-500/5"
+                              }`}
+                            >
+                              <option value="">파트 선택</option>
+                              {PARTS.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.label}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="py-1.5">
+                            <input
+                              value={d.name}
+                              onChange={(e) =>
+                                updateDraft(i, { name: e.target.value })
+                              }
+                              className="w-full rounded border border-sand-200 bg-white px-2 py-1 text-xs"
+                            />
+                          </td>
+                          <td className="py-1.5 text-right">
+                            <input
+                              type="number"
+                              value={d.price}
+                              onChange={(e) =>
+                                updateDraft(i, { price: Number(e.target.value) })
+                              }
+                              className="w-28 rounded border border-sand-200 bg-white px-2 py-1 text-right text-xs tabular"
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={closeImport}
+                    className="rounded-lg border border-sand-200 px-4 py-2 text-sm text-sand-700"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    onClick={importSelected}
+                    disabled={importing}
+                    className="rounded-lg bg-sand-800 px-4 py-2 text-sm font-semibold text-white hover:bg-sand-900 disabled:opacity-60"
+                  >
+                    {importing
+                      ? "등록 중..."
+                      : `${drafts.filter((d) => d.include).length}개 등록`}
+                  </button>
+                </div>
+              </div>
+            )}
+          </CardBody>
+        </Card>
+      )}
 
       {showNew && (
         <Card>
