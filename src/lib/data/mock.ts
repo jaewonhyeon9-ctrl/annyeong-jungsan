@@ -610,6 +610,7 @@ export const mockDataSource: DataSource = {
         centerId: input.centerId,
         partId: input.partId,
         ownerId: input.ownerId ?? null,
+        practitionerName: input.practitionerName ?? null,
         patientId: input.patientId ?? null,
         patientName: input.patientName ?? null,
         patientPhone: input.patientPhone ?? null,

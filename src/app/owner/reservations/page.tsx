@@ -96,6 +96,9 @@ export default function OwnerReservationsPage() {
   const [editing, setEditing] = useState<Reservation | null>(null);
   const [showForm, setShowForm] = useState(false);
 
+  // 시술자 — 예약에 입력된 이름 + 이번 세션에 직접 추가한 이름 (칸 분할 기준)
+  const [extraPractitioners, setExtraPractitioners] = useState<string[]>([]);
+
   // 권한 — owner는 자기 파트만
   const myPart: PartId | null = useMemo(() => {
     if (profile?.role === "owner" && profile.partId) return profile.partId;
@@ -110,6 +113,17 @@ export default function OwnerReservationsPage() {
     }
     return owners.filter((o) => o.role === "owner" && o.centerId === centerId);
   }, [owners, profile, centerId]);
+
+  // 알려진 시술자 이름 — 월/일 예약에 등장한 이름 + 직접 추가한 이름
+  const knownPractitioners = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of monthReservations)
+      if (r.practitionerName?.trim()) set.add(r.practitionerName.trim());
+    for (const r of dayReservations)
+      if (r.practitionerName?.trim()) set.add(r.practitionerName.trim());
+    for (const n of extraPractitioners) if (n.trim()) set.add(n.trim());
+    return [...set].sort((a, b) => a.localeCompare(b, "ko"));
+  }, [monthReservations, dayReservations, extraPractitioners]);
 
   const refreshMonth = useCallback(async () => {
     if (!centerId) return;
@@ -288,22 +302,37 @@ export default function OwnerReservationsPage() {
                 총 {dayReservations.length}건 · 가로 시술자 / 세로 시간
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setEditing(null);
-                setShowForm(true);
-              }}
-              className="rounded-lg bg-clay-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-clay-600"
-            >
-              + 예약 추가
-            </button>
+            <div className="flex gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  const name = window.prompt("추가할 시술자 이름");
+                  if (name?.trim())
+                    setExtraPractitioners((p) => [
+                      ...new Set([...p, name.trim()]),
+                    ]);
+                }}
+                className="rounded-lg border border-sand-300 px-3 py-1.5 text-xs font-semibold text-sand-700 hover:bg-sand-100"
+              >
+                + 시술자
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditing(null);
+                  setShowForm(true);
+                }}
+                className="rounded-lg bg-clay-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-clay-600"
+              >
+                + 예약 추가
+              </button>
+            </div>
           </div>
 
           <DayGrid
-            owners={visibleOwners}
+            practitioners={knownPractitioners}
             reservations={dayReservations}
-            onCellClick={(ownerId, hour, minute) => {
+            onCellClick={(practitionerName, hour, minute) => {
               const iso = localIsoFromYmdHm(selectedDate, hour, minute);
               const empty: Reservation = {
                 id: "",
@@ -312,8 +341,10 @@ export default function OwnerReservationsPage() {
                   profile?.role === "owner" && profile.partId
                     ? profile.partId
                     : (PARTS[0]?.id ?? "scalp"),
-                ownerId,
+                ownerId:
+                  profile?.role === "owner" ? profile.id : null,
                 ownerName: undefined,
+                practitionerName: practitionerName || null,
                 patientId: null,
                 patientName: null,
                 patientPhone: null,
@@ -334,6 +365,13 @@ export default function OwnerReservationsPage() {
               setEditing(r);
               setShowForm(true);
             }}
+            onQuickComplete={async (r) => {
+              const data = await getDataSource();
+              const next: ReservationStatus =
+                r.status === "completed" ? "scheduled" : "completed";
+              await data.reservations.update(r.id, { status: next });
+              await Promise.all([refreshMonth(), refreshDay()]);
+            }}
           />
         </CardBody>
       </Card>
@@ -345,6 +383,7 @@ export default function OwnerReservationsPage() {
           patients={patients}
           services={allServices}
           myPart={myPart}
+          knownPractitioners={knownPractitioners}
           initial={editing}
           onClose={() => {
             setShowForm(false);
@@ -364,15 +403,17 @@ export default function OwnerReservationsPage() {
 // ====================== 일별 그리드 ======================
 
 function DayGrid({
-  owners,
+  practitioners,
   reservations,
   onCellClick,
   onReservationClick,
+  onQuickComplete,
 }: {
-  owners: UserProfile[];
+  practitioners: string[];
   reservations: Reservation[];
-  onCellClick: (ownerId: string | null, hour: number, minute: number) => void;
+  onCellClick: (practitionerName: string, hour: number, minute: number) => void;
   onReservationClick: (r: Reservation) => void;
+  onQuickComplete: (r: Reservation) => void;
 }) {
   const slots = useMemo(() => {
     const arr: Array<{ h: number; m: number }> = [];
@@ -383,36 +424,33 @@ function DayGrid({
     return arr;
   }, []);
 
-  // 셀별 예약 매핑 — ownerId × "HH:MM"
+  // 셀별 예약 매핑 — 시술자 이름 × "HH:MM"
   const cellMap = useMemo(() => {
     const m = new Map<string, Reservation>();
     for (const r of reservations) {
       const { h, m: mm } = hourFromIso(r.scheduledAt);
       const slotMin = mm < 30 ? 0 : 30;
-      const key = `${r.ownerId ?? "_"}-${pad(h)}:${pad(slotMin)}`;
+      const key = `${r.practitionerName?.trim() ?? ""}-${pad(h)}:${pad(slotMin)}`;
       m.set(key, r);
     }
     return m;
   }, [reservations]);
 
-  // 시술자 미지정 예약(owner_id NULL)이 한 건이라도 있으면 항상 그 컬럼 노출
-  const hasUnassigned = reservations.some((r) => r.ownerId == null);
-  const colDefs =
-    owners.length === 0
-      ? [{ id: null as string | null, name: "시술자 미지정" }]
-      : [
-          ...owners.map((o) => ({ id: o.id as string | null, name: o.displayName })),
-          ...(hasUnassigned
-            ? [{ id: null as string | null, name: "시술자 미지정" }]
-            : []),
-        ];
+  // 시술자 미지정 예약이 있거나 등록된 시술자가 없으면 "미지정" 칸 노출
+  const hasUnassigned = reservations.some((r) => !r.practitionerName?.trim());
+  const colDefs: Array<{ key: string; name: string }> = [
+    ...practitioners.map((n) => ({ key: n, name: n })),
+    ...(hasUnassigned || practitioners.length === 0
+      ? [{ key: "", name: "미지정" }]
+      : []),
+  ];
 
   return (
     <div className="overflow-x-auto">
       <div
         className="grid gap-px bg-sand-200 text-xs"
         style={{
-          gridTemplateColumns: `60px repeat(${colDefs.length}, minmax(110px, 1fr))`,
+          gridTemplateColumns: `60px repeat(${colDefs.length}, minmax(120px, 1fr))`,
         }}
       >
         {/* Header */}
@@ -421,7 +459,7 @@ function DayGrid({
         </div>
         {colDefs.map((c) => (
           <div
-            key={c.id ?? "_"}
+            key={c.key || "_"}
             className="bg-sand-100 py-2 text-center font-semibold text-sand-700"
           >
             {c.name}
@@ -438,12 +476,20 @@ function DayGrid({
             cellMap={cellMap}
             onCellClick={onCellClick}
             onReservationClick={onReservationClick}
+            onQuickComplete={onQuickComplete}
           />
         ))}
       </div>
     </div>
   );
 }
+
+const STATUS_COLOR: Record<ReservationStatus, string> = {
+  scheduled: "bg-clay-500/20 border-clay-500/50 text-clay-800",
+  completed: "bg-moss-500/20 border-moss-500/50 text-moss-800",
+  cancelled: "bg-sand-200 border-sand-300 text-sand-400 line-through",
+  no_show: "bg-rose-100 border-rose-300 text-rose-700",
+};
 
 function FragmentRow({
   hour,
@@ -452,13 +498,15 @@ function FragmentRow({
   cellMap,
   onCellClick,
   onReservationClick,
+  onQuickComplete,
 }: {
   hour: number;
   minute: number;
-  cols: Array<{ id: string | null; name: string }>;
+  cols: Array<{ key: string; name: string }>;
   cellMap: Map<string, Reservation>;
-  onCellClick: (ownerId: string | null, hour: number, minute: number) => void;
+  onCellClick: (practitionerName: string, hour: number, minute: number) => void;
   onReservationClick: (r: Reservation) => void;
+  onQuickComplete: (r: Reservation) => void;
 }) {
   return (
     <>
@@ -466,38 +514,55 @@ function FragmentRow({
         {pad(hour)}:{pad(minute)}
       </div>
       {cols.map((c) => {
-        const key = `${c.id ?? "_"}-${pad(hour)}:${pad(minute)}`;
+        const key = `${c.key}-${pad(hour)}:${pad(minute)}`;
         const r = cellMap.get(key);
         if (r) {
-          const statusColor: Record<ReservationStatus, string> = {
-            scheduled: "bg-clay-500/20 border-clay-500/50 text-clay-800",
-            completed: "bg-moss-500/20 border-moss-500/50 text-moss-800",
-            cancelled: "bg-sand-200 border-sand-300 text-sand-400 line-through",
-            no_show: "bg-rose-100 border-rose-300 text-rose-700",
-          };
           return (
-            <button
+            <div
               key={key}
-              type="button"
-              onClick={() => onReservationClick(r)}
-              className={`min-h-[44px] border-l-2 px-2 py-1 text-left ${statusColor[r.status]}`}
+              className={`relative min-h-[44px] border-l-2 ${STATUS_COLOR[r.status]}`}
             >
-              <div className="truncate text-[11px] font-semibold">
-                {r.patientName ?? "(이름 없음)"}
-              </div>
-              {r.serviceName && (
-                <div className="truncate text-[10px] opacity-70">
-                  {r.serviceName}
+              <button
+                type="button"
+                onClick={() => onReservationClick(r)}
+                className="block w-full px-2 py-1 pr-6 text-left"
+              >
+                <div className="truncate text-[11px] font-semibold">
+                  {r.patientName ?? "(이름 없음)"}
                 </div>
+                {r.serviceName && (
+                  <div className="truncate text-[10px] opacity-70">
+                    {r.serviceName}
+                  </div>
+                )}
+                {r.memo && (
+                  <div className="truncate text-[10px] italic opacity-70">
+                    📝 {r.memo}
+                  </div>
+                )}
+              </button>
+              {r.status !== "cancelled" && (
+                <button
+                  type="button"
+                  onClick={() => onQuickComplete(r)}
+                  title={r.status === "completed" ? "완료 취소" : "시술완료"}
+                  className={`absolute right-0.5 top-0.5 rounded px-1 py-0.5 text-[11px] font-bold ${
+                    r.status === "completed"
+                      ? "bg-white/60 text-moss-700"
+                      : "bg-white/70 text-sand-500 hover:text-moss-700"
+                  }`}
+                >
+                  {r.status === "completed" ? "↩" : "✓"}
+                </button>
               )}
-            </button>
+            </div>
           );
         }
         return (
           <button
             key={key}
             type="button"
-            onClick={() => onCellClick(c.id, hour, minute)}
+            onClick={() => onCellClick(c.key, hour, minute)}
             className="min-h-[44px] bg-white hover:bg-clay-500/5"
             aria-label={`${pad(hour)}:${pad(minute)} ${c.name} 슬롯`}
           />
@@ -515,6 +580,7 @@ function ReservationForm({
   patients,
   services,
   myPart,
+  knownPractitioners,
   initial,
   onClose,
   onSaved,
@@ -524,6 +590,7 @@ function ReservationForm({
   patients: Patient[];
   services: ReturnType<typeof useAllServices>["services"];
   myPart: PartId | null;
+  knownPractitioners: string[];
   initial: Reservation | null;
   onClose: () => void;
   onSaved: () => void;
@@ -531,6 +598,7 @@ function ReservationForm({
   const isEdit = !!initial?.id;
   type FormState = {
     ownerId: string | null;
+    practitionerName: string;
     partId: PartId;
     patientId: string | null;
     patientName: string;
@@ -544,6 +612,7 @@ function ReservationForm({
   };
   const [form, setForm] = useState<FormState>(() => ({
     ownerId: initial?.ownerId ?? owners[0]?.id ?? null,
+    practitionerName: initial?.practitionerName ?? "",
     partId: (initial?.partId ?? myPart ?? "scalp") as PartId,
     patientId: initial?.patientId ?? null,
     patientName: initial?.patientName ?? "",
@@ -600,6 +669,7 @@ function ReservationForm({
       const scheduledAt = `${dtLocal}:00+09:00`;
       const payload = {
         ownerId: form.ownerId,
+        practitionerName: form.practitionerName.trim() || null,
         patientId: form.patientId,
         patientName: form.patientName.trim() || null,
         patientPhone: form.patientPhone.trim() || null,
@@ -773,8 +843,25 @@ function ReservationForm({
             </Field>
           )}
 
+          <Field label="시술자 (이름)">
+            <input
+              list="practitioner-list"
+              value={form.practitionerName}
+              onChange={(e) =>
+                setForm({ ...form, practitionerName: e.target.value })
+              }
+              placeholder="시술자 이름 입력 (예약 칸이 이름별로 나뉘어요)"
+              className="w-full rounded-lg border border-sand-200 bg-white px-3 py-2 text-sm focus:border-clay-400 focus:outline-none"
+            />
+            <datalist id="practitioner-list">
+              {knownPractitioners.map((n) => (
+                <option key={n} value={n} />
+              ))}
+            </datalist>
+          </Field>
+
           {owners.length > 1 && (
-            <Field label="시술자">
+            <Field label="담당 원장 (계정)">
               <select
                 value={form.ownerId ?? ""}
                 onChange={(e) =>

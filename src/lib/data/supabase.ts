@@ -328,6 +328,7 @@ type RawReservationRow = {
   center_id: string;
   part_id: PartId;
   owner_id: string | null;
+  practitioner_name: string | null;
   patient_id: string | null;
   patient_name: string | null;
   patient_phone: string | null;
@@ -351,6 +352,7 @@ function rowToReservation(r: RawReservationRow): Reservation {
     partId: r.part_id,
     ownerId: r.owner_id,
     ownerName: ownerObj?.display_name,
+    practitionerName: r.practitioner_name,
     patientId: r.patient_id,
     patientName: r.patient_name,
     patientPhone: r.patient_phone,
@@ -1320,7 +1322,7 @@ export const supabaseDataSource: DataSource = {
       const { data, error } = await sb
         .from("reservations")
         .select(
-          `id, center_id, part_id, owner_id, patient_id, patient_name,
+          `id, center_id, part_id, owner_id, practitioner_name, patient_id, patient_name,
            patient_phone, scheduled_at, duration_min, service_id, service_name,
            status, memo, created_by, created_at, updated_at,
            owner:profiles!reservations_owner_id_fkey(display_name)`
@@ -1341,7 +1343,7 @@ export const supabaseDataSource: DataSource = {
       const { data, error } = await sb
         .from("reservations")
         .select(
-          `id, center_id, part_id, owner_id, patient_id, patient_name,
+          `id, center_id, part_id, owner_id, practitioner_name, patient_id, patient_name,
            patient_phone, scheduled_at, duration_min, service_id, service_name,
            status, memo, created_by, created_at, updated_at,
            owner:profiles!reservations_owner_id_fkey(display_name)`
@@ -1361,6 +1363,7 @@ export const supabaseDataSource: DataSource = {
           center_id: input.centerId,
           part_id: input.partId,
           owner_id: input.ownerId ?? null,
+          practitioner_name: input.practitionerName ?? null,
           patient_id: input.patientId ?? null,
           patient_name: input.patientName ?? null,
           patient_phone: input.patientPhone ?? null,
@@ -1372,7 +1375,7 @@ export const supabaseDataSource: DataSource = {
           memo: input.memo ?? null,
         })
         .select(
-          `id, center_id, part_id, owner_id, patient_id, patient_name,
+          `id, center_id, part_id, owner_id, practitioner_name, patient_id, patient_name,
            patient_phone, scheduled_at, duration_min, service_id, service_name,
            status, memo, created_by, created_at, updated_at,
            owner:profiles!reservations_owner_id_fkey(display_name)`
@@ -1385,6 +1388,8 @@ export const supabaseDataSource: DataSource = {
       const sb = createClient();
       const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (patch.ownerId !== undefined) update.owner_id = patch.ownerId;
+      if (patch.practitionerName !== undefined)
+        update.practitioner_name = patch.practitionerName;
       if (patch.patientId !== undefined) update.patient_id = patch.patientId;
       if (patch.patientName !== undefined) update.patient_name = patch.patientName;
       if (patch.patientPhone !== undefined) update.patient_phone = patch.patientPhone;
@@ -1399,7 +1404,7 @@ export const supabaseDataSource: DataSource = {
         .update(update)
         .eq("id", id)
         .select(
-          `id, center_id, part_id, owner_id, patient_id, patient_name,
+          `id, center_id, part_id, owner_id, practitioner_name, patient_id, patient_name,
            patient_phone, scheduled_at, duration_min, service_id, service_name,
            status, memo, created_by, created_at, updated_at,
            owner:profiles!reservations_owner_id_fkey(display_name)`

@@ -147,6 +147,7 @@ export interface Reservation {
   partId: PartId;
   ownerId: string | null;
   ownerName?: string;            // 조인 결과 — 선택 표시용
+  practitionerName: string | null; // 시술자 이름 (계정 없는 치료사 — 칸분할 기준)
   patientId: string | null;       // 환자 DB 연결 시
   patientName: string | null;     // 신규/스냅샷
   patientPhone: string | null;
@@ -165,6 +166,7 @@ export interface ReservationCreateInput {
   centerId: string;
   partId: PartId;
   ownerId?: string | null;
+  practitionerName?: string | null;
   patientId?: string | null;
   patientName?: string | null;
   patientPhone?: string | null;

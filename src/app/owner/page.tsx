@@ -306,6 +306,66 @@ export default function OwnerHome() {
         </CardBody>
       </Card>
 
+      {/* 빠른 이동 — 예약/통계 등 (상단 배치) */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Link
+          href="/owner/reservations"
+          className="rounded-2xl border-2 border-clay-300 bg-clay-500/10 px-4 py-4 text-center"
+        >
+          <div className="text-xl">📅</div>
+          <div className="mt-1 text-sm font-semibold text-sand-800">예약</div>
+          <div className="text-[11px] text-sand-500">월간 · 일별 그리드</div>
+        </Link>
+        <Link
+          href="/owner/stats"
+          className="rounded-2xl border-2 border-moss-300 bg-moss-500/10 px-4 py-4 text-center"
+        >
+          <div className="text-xl">📊</div>
+          <div className="mt-1 text-sm font-semibold text-sand-800">매출 통계</div>
+          <div className="text-[11px] text-sand-500">오늘 · 이번달 · TOP</div>
+        </Link>
+        <Link
+          href="/owner/consultations"
+          className="rounded-2xl border border-sand-200 bg-white/70 px-4 py-4 text-center"
+        >
+          <div className="text-xl">💬</div>
+          <div className="mt-1 text-sm font-semibold text-sand-800">상담 관리</div>
+          <div className="text-[11px] text-sand-500">이력 · 다음 약속</div>
+        </Link>
+        <Link
+          href="/owner/outstanding"
+          className="rounded-2xl border border-sand-200 bg-white/70 px-4 py-4 text-center"
+        >
+          <div className="text-xl">💸</div>
+          <div className="mt-1 text-sm font-semibold text-sand-800">미수금</div>
+          <div className="text-[11px] text-sand-500">환자별 합계</div>
+        </Link>
+        <Link
+          href="/owner/patients"
+          className="rounded-2xl border border-sand-200 bg-white/70 px-4 py-4 text-center"
+        >
+          <div className="text-xl">👤</div>
+          <div className="mt-1 text-sm font-semibold text-sand-800">환자 관리</div>
+          <div className="text-[11px] text-sand-500">신규 · 방문 차트</div>
+        </Link>
+        <Link
+          href="/owner/inflow"
+          className="rounded-2xl border border-sand-200 bg-white/70 px-4 py-4 text-center"
+        >
+          <div className="text-xl">📈</div>
+          <div className="mt-1 text-sm font-semibold text-sand-800">월별 유입</div>
+          <div className="text-[11px] text-sand-500">유입경로 · 신규</div>
+        </Link>
+        <Link
+          href="/owner/services"
+          className="rounded-2xl border border-sand-200 bg-white/70 px-4 py-4 text-center"
+        >
+          <div className="text-xl">🧾</div>
+          <div className="mt-1 text-sm font-semibold text-sand-800">시술 품목</div>
+          <div className="text-[11px] text-sand-500">등록 · 수정</div>
+        </Link>
+      </div>
+
       {/* OCR 입력 (hidden) */}
       <input
         ref={fileInputRef}
@@ -534,66 +594,6 @@ export default function OwnerHome() {
           </div>
         )}
       </Card>
-
-      {/* 메뉴 그리드 */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Link
-          href="/owner/reservations"
-          className="rounded-2xl border-2 border-clay-300 bg-clay-500/10 px-4 py-4 text-center"
-        >
-          <div className="text-xl">📅</div>
-          <div className="mt-1 text-sm font-semibold text-sand-800">예약</div>
-          <div className="text-[11px] text-sand-500">월간 · 일별 그리드</div>
-        </Link>
-        <Link
-          href="/owner/stats"
-          className="rounded-2xl border-2 border-moss-300 bg-moss-500/10 px-4 py-4 text-center"
-        >
-          <div className="text-xl">📊</div>
-          <div className="mt-1 text-sm font-semibold text-sand-800">매출 통계</div>
-          <div className="text-[11px] text-sand-500">오늘 · 이번달 · TOP</div>
-        </Link>
-        <Link
-          href="/owner/consultations"
-          className="rounded-2xl border border-sand-200 bg-white/70 px-4 py-4 text-center"
-        >
-          <div className="text-xl">💬</div>
-          <div className="mt-1 text-sm font-semibold text-sand-800">상담 관리</div>
-          <div className="text-[11px] text-sand-500">이력 · 다음 약속</div>
-        </Link>
-        <Link
-          href="/owner/outstanding"
-          className="rounded-2xl border border-sand-200 bg-white/70 px-4 py-4 text-center"
-        >
-          <div className="text-xl">💸</div>
-          <div className="mt-1 text-sm font-semibold text-sand-800">미수금</div>
-          <div className="text-[11px] text-sand-500">환자별 합계</div>
-        </Link>
-        <Link
-          href="/owner/patients"
-          className="rounded-2xl border border-sand-200 bg-white/70 px-4 py-4 text-center"
-        >
-          <div className="text-xl">👤</div>
-          <div className="mt-1 text-sm font-semibold text-sand-800">환자 관리</div>
-          <div className="text-[11px] text-sand-500">신규 · 방문 차트</div>
-        </Link>
-        <Link
-          href="/owner/inflow"
-          className="rounded-2xl border border-sand-200 bg-white/70 px-4 py-4 text-center"
-        >
-          <div className="text-xl">📈</div>
-          <div className="mt-1 text-sm font-semibold text-sand-800">월별 유입</div>
-          <div className="text-[11px] text-sand-500">유입경로 · 신규</div>
-        </Link>
-        <Link
-          href="/owner/services"
-          className="rounded-2xl border border-sand-200 bg-white/70 px-4 py-4 text-center"
-        >
-          <div className="text-xl">🧾</div>
-          <div className="mt-1 text-sm font-semibold text-sand-800">시술 품목</div>
-          <div className="text-[11px] text-sand-500">등록 · 수정</div>
-        </Link>
-      </div>
 
       {saveNotice && (
         <div className="rounded-xl bg-moss-500/10 px-4 py-3 text-sm text-moss-700">

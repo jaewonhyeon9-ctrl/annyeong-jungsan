@@ -8,6 +8,8 @@ import { getDataSource } from "@/lib/data";
 import { fmtWon, todayKST } from "@/lib/format";
 import { resizeToDataUrl } from "@/lib/image";
 import { useServicesByPart, useAllServices } from "@/lib/services";
+import { ocrFromFile } from "@/lib/ocr/client";
+import type { PosOcrData } from "@/lib/ocr/types";
 import { PARTS, type Patient, type PartId } from "@/lib/types";
 import { useCurrentProfile } from "@/lib/use-current-profile";
 
@@ -48,8 +50,21 @@ export default function VisitChartPage({
   const [saving, setSaving] = useState(false);
   const [beforePhoto, setBeforePhoto] = useState<string | null>(null);
   const [afterPhoto, setAfterPhoto] = useState<string | null>(null);
-  const beforeRef = useRef<HTMLInputElement>(null);
-  const afterRef = useRef<HTMLInputElement>(null);
+  const beforeCamRef = useRef<HTMLInputElement>(null);
+  const beforeGalRef = useRef<HTMLInputElement>(null);
+  const afterCamRef = useRef<HTMLInputElement>(null);
+  const afterGalRef = useRef<HTMLInputElement>(null);
+
+  // OCR — 종이 방문차트/매출표 촬영 → 시술·결제 자동 입력
+  const ocrRef = useRef<HTMLInputElement>(null);
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrNotice, setOcrNotice] = useState<{
+    matched: number;
+    unmatched: string[];
+    confidence: number;
+    warnings: string[];
+    mock?: boolean;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,6 +121,82 @@ export default function VisitChartPage({
       setter(dataUrl);
     } catch (err) {
       alert(`사진 처리 실패: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  async function handleOcr(file: File) {
+    setOcrLoading(true);
+    setOcrNotice(null);
+    try {
+      const result = await ocrFromFile(file, "pos");
+      // 차트/메뉴 등 매출표가 아닌 사진은 거부
+      if (
+        result.classification !== "pos" &&
+        result.classification !== "unknown"
+      ) {
+        setOcrNotice({
+          matched: 0,
+          unmatched: [],
+          confidence: result.confidence,
+          warnings: [
+            `이 사진은 "${result.classification}"로 인식됐어요. 방문차트/매출표를 다시 촬영해 주세요.`,
+          ],
+          mock: result.mock,
+        });
+        return;
+      }
+
+      const data =
+        result.data && "items" in result.data
+          ? (result.data as PosOcrData)
+          : null;
+
+      if (data?.date) setVisitDate(data.date);
+
+      const items = data?.items ?? [];
+      const next: SaleDraft = { ...draft };
+      const unmatched: string[] = [];
+      const partCount: Record<string, number> = {};
+      let matched = 0;
+
+      for (const it of items) {
+        const svc = matchService(it.serviceName, allServices);
+        if (svc) {
+          next[svc.id] = { cash: it.cash || 0, card: it.card || 0 };
+          partCount[svc.partId] = (partCount[svc.partId] ?? 0) + 1;
+          matched++;
+        } else if (it.serviceName?.trim()) {
+          unmatched.push(it.serviceName.trim());
+        }
+      }
+      setDraft(next);
+
+      // 매칭된 시술이 보이도록 가장 많이 매칭된 파트로 전환 (권한 내에서만)
+      const parts = Object.keys(partCount).sort(
+        (a, b) => partCount[b] - partCount[a]
+      );
+      const dominant = parts[0] as PartId | undefined;
+      if (dominant && visibleParts.some((p) => p.id === dominant))
+        setPartId(dominant);
+
+      setOcrNotice({
+        matched,
+        unmatched,
+        confidence: result.confidence,
+        warnings: result.warnings,
+        mock: result.mock,
+      });
+    } catch (err) {
+      setOcrNotice({
+        matched: 0,
+        unmatched: [],
+        confidence: 0,
+        warnings: [
+          `OCR 실패: ${err instanceof Error ? err.message : String(err)}`,
+        ],
+      });
+    } finally {
+      setOcrLoading(false);
     }
   }
 
@@ -256,6 +347,77 @@ export default function VisitChartPage({
           </CardBody>
         </Card>
 
+        {/* OCR — 종이 차트/매출표 촬영 자동입력 */}
+        <button
+          type="button"
+          onClick={() => ocrRef.current?.click()}
+          disabled={ocrLoading || saving}
+          className="flex w-full items-center gap-3 rounded-2xl border-2 border-dashed border-clay-300 bg-clay-500/5 px-4 py-3 text-left transition hover:bg-clay-500/10 disabled:opacity-60"
+        >
+          <span className="text-2xl">{ocrLoading ? "⏳" : "📸"}</span>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-clay-700">
+              {ocrLoading ? "사진 분석 중..." : "차트·매출표 촬영해서 자동입력"}
+            </div>
+            <div className="text-[11px] text-sand-500">
+              {ocrLoading
+                ? "잠시만 기다려 주세요"
+                : "시술·결제 금액을 자동으로 채워줘요 (확인 후 수정 가능)"}
+            </div>
+          </div>
+        </button>
+        <input
+          ref={ocrRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleOcr(f);
+            e.target.value = "";
+          }}
+        />
+
+        {ocrNotice && (
+          <div
+            className={`rounded-xl border px-4 py-3 text-xs ${
+              ocrNotice.matched > 0
+                ? "border-green-200 bg-green-50 text-green-800"
+                : "border-amber-200 bg-amber-50 text-amber-800"
+            }`}
+          >
+            <div className="flex items-center justify-between font-semibold">
+              <span>
+                {ocrNotice.matched > 0
+                  ? `✓ ${ocrNotice.matched}개 시술 자동 입력`
+                  : "⚠️ 자동 입력된 시술 없음"}
+              </span>
+              {ocrNotice.confidence > 0 && (
+                <span className="text-[10px] font-normal opacity-70">
+                  신뢰도 {Math.round(ocrNotice.confidence * 100)}%
+                  {ocrNotice.mock && " · Mock"}
+                </span>
+              )}
+            </div>
+            {ocrNotice.unmatched.length > 0 && (
+              <div className="mt-1.5 text-[11px] opacity-80">
+                매칭 실패(직접 입력): {ocrNotice.unmatched.join(", ")}
+              </div>
+            )}
+            {ocrNotice.warnings.length > 0 && (
+              <ul className="mt-1.5 list-disc pl-4 text-[11px] opacity-80">
+                {ocrNotice.warnings.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+            )}
+            <div className="mt-1.5 text-[11px] opacity-70">
+              아래에서 금액을 확인하고 저장하세요.
+            </div>
+          </div>
+        )}
+
         {/* 방문일 + 파트 */}
         <Card>
           <CardBody className="space-y-3">
@@ -387,17 +549,20 @@ export default function VisitChartPage({
               <PhotoSlot
                 label="Before"
                 photo={beforePhoto}
-                onPick={() => beforeRef.current?.click()}
+                onCamera={() => beforeCamRef.current?.click()}
+                onGallery={() => beforeGalRef.current?.click()}
                 onClear={() => setBeforePhoto(null)}
               />
               <PhotoSlot
                 label="After"
                 photo={afterPhoto}
-                onPick={() => afterRef.current?.click()}
+                onCamera={() => afterCamRef.current?.click()}
+                onGallery={() => afterGalRef.current?.click()}
                 onClear={() => setAfterPhoto(null)}
               />
+              {/* Before — 카메라 / 갤러리 */}
               <input
-                ref={beforeRef}
+                ref={beforeCamRef}
                 type="file"
                 accept="image/*"
                 capture="environment"
@@ -409,10 +574,33 @@ export default function VisitChartPage({
                 }}
               />
               <input
-                ref={afterRef}
+                ref={beforeGalRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) onPhotoPicked(f, setBeforePhoto);
+                  e.target.value = "";
+                }}
+              />
+              {/* After — 카메라 / 갤러리 */}
+              <input
+                ref={afterCamRef}
                 type="file"
                 accept="image/*"
                 capture="environment"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) onPhotoPicked(f, setAfterPhoto);
+                  e.target.value = "";
+                }}
+              />
+              <input
+                ref={afterGalRef}
+                type="file"
+                accept="image/*"
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
@@ -455,12 +643,14 @@ export default function VisitChartPage({
 function PhotoSlot({
   label,
   photo,
-  onPick,
+  onCamera,
+  onGallery,
   onClear,
 }: {
   label: string;
   photo: string | null;
-  onPick: () => void;
+  onCamera: () => void;
+  onGallery: () => void;
   onClear: () => void;
 }) {
   if (photo) {
@@ -482,13 +672,44 @@ function PhotoSlot({
     );
   }
   return (
-    <button
-      type="button"
-      onClick={onPick}
-      className="flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-sand-300 bg-sand-50 text-xs font-medium text-sand-600 hover:border-clay-400 hover:text-clay-600"
-    >
+    <div className="flex aspect-square flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-sand-300 bg-sand-50 text-xs font-medium text-sand-600">
       <span className="text-xl">📷</span>
-      <span>{label} 촬영</span>
-    </button>
+      <span>{label}</span>
+      <div className="flex gap-1.5">
+        <button
+          type="button"
+          onClick={onCamera}
+          className="rounded bg-clay-500/10 px-2 py-1 text-[11px] font-medium text-clay-700 hover:bg-clay-500/20"
+        >
+          촬영
+        </button>
+        <button
+          type="button"
+          onClick={onGallery}
+          className="rounded bg-sand-200 px-2 py-1 text-[11px] font-medium text-sand-700 hover:bg-sand-300"
+        >
+          갤러리
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// OCR 시술명 → 등록된 시술 매칭 (공백/괄호 무시, 부분 일치 허용)
+function matchService<T extends { id: string; name: string; partId: PartId }>(
+  ocrName: string,
+  services: T[]
+): T | null {
+  const norm = (s: string) =>
+    s.replace(/\s+/g, "").replace(/[()[\]·/]/g, "").toLowerCase();
+  const n = norm(ocrName);
+  if (!n) return null;
+  const exact = services.find((s) => norm(s.name) === n);
+  if (exact) return exact;
+  return (
+    services.find((s) => {
+      const sn = norm(s.name);
+      return sn.includes(n) || n.includes(sn);
+    }) ?? null
   );
 }
