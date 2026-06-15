@@ -42,6 +42,8 @@ import type {
   ReservationUpdateInput,
   SalesSummary,
   ServiceCreateInput,
+  ServicePass,
+  ServicePassCreateInput,
   ServiceRecord,
   ServiceUpdateInput,
   SettlementRule,
@@ -1588,6 +1590,110 @@ export const supabaseDataSource: DataSource = {
         reason: hist.reason,
         balanceAfter: hist.balance_after,
         createdAt: hist.created_at,
+      };
+    },
+  },
+
+  passes: {
+    async listByPatient(patientId: string): Promise<ServicePass[]> {
+      const sb = createClient();
+      const { data, error } = await sb
+        .from("service_passes")
+        .select(
+          "id, patient_id, center_id, service_id, service_name, part_id, total_count, used_count, note, created_at"
+        )
+        .eq("patient_id", patientId)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return ((data ?? []) as Array<{
+        id: string;
+        patient_id: string;
+        center_id: string;
+        service_id: string;
+        service_name: string;
+        part_id: PartId;
+        total_count: number;
+        used_count: number;
+        note: string | null;
+        created_at: string;
+      }>).map((r) => ({
+        id: r.id,
+        patientId: r.patient_id,
+        centerId: r.center_id,
+        serviceId: r.service_id,
+        serviceName: r.service_name,
+        partId: r.part_id,
+        totalCount: r.total_count,
+        usedCount: r.used_count,
+        note: r.note,
+        createdAt: r.created_at,
+      }));
+    },
+    async purchase(input: ServicePassCreateInput): Promise<ServicePass> {
+      const sb = createClient();
+      const { data, error } = await sb
+        .from("service_passes")
+        .insert({
+          patient_id: input.patientId,
+          center_id: input.centerId,
+          service_id: input.serviceId,
+          service_name: input.serviceName,
+          part_id: input.partId,
+          total_count: input.totalCount,
+          used_count: 0,
+          purchase_visit_id: input.purchaseVisitId ?? null,
+          note: input.note ?? null,
+        })
+        .select(
+          "id, patient_id, center_id, service_id, service_name, part_id, total_count, used_count, note, created_at"
+        )
+        .single();
+      if (error) throw error;
+      return {
+        id: data.id,
+        patientId: data.patient_id,
+        centerId: data.center_id,
+        serviceId: data.service_id,
+        serviceName: data.service_name,
+        partId: data.part_id,
+        totalCount: data.total_count,
+        usedCount: data.used_count,
+        note: data.note,
+        createdAt: data.created_at,
+      };
+    },
+    async use(passId: string, count = 1): Promise<ServicePass> {
+      const sb = createClient();
+      const { data: cur, error: e1 } = await sb
+        .from("service_passes")
+        .select("total_count, used_count")
+        .eq("id", passId)
+        .single();
+      if (e1) throw e1;
+      const newUsed = (cur.used_count ?? 0) + count;
+      if (newUsed > cur.total_count) {
+        throw new Error("남은 횟수가 부족합니다.");
+      }
+      const { data, error } = await sb
+        .from("service_passes")
+        .update({ used_count: newUsed })
+        .eq("id", passId)
+        .select(
+          "id, patient_id, center_id, service_id, service_name, part_id, total_count, used_count, note, created_at"
+        )
+        .single();
+      if (error) throw error;
+      return {
+        id: data.id,
+        patientId: data.patient_id,
+        centerId: data.center_id,
+        serviceId: data.service_id,
+        serviceName: data.service_name,
+        partId: data.part_id,
+        totalCount: data.total_count,
+        usedCount: data.used_count,
+        note: data.note,
+        createdAt: data.created_at,
       };
     },
   },

@@ -12,9 +12,11 @@ import { ocrFromFile } from "@/lib/ocr/client";
 import type { PosOcrData } from "@/lib/ocr/types";
 import {
   PARTS,
+  passRemaining,
   type Patient,
   type PartId,
   type PaymentMethod,
+  type ServicePass,
   type VisitSaleLine,
 } from "@/lib/types";
 import { useCurrentProfile } from "@/lib/use-current-profile";
@@ -57,6 +59,16 @@ export default function VisitChartPage({
   const [qty, setQty] = useState<Record<string, number>>({});
   const [discountRate, setDiscountRate] = useState(0);
   const [payMethod, setPayMethod] = useState<PaymentMethod>("card");
+  // 회수권 — 환자 보유 회수권 + 이번 방문 차감/구매
+  const [patientPasses, setPatientPasses] = useState<ServicePass[]>([]);
+  const [passUse, setPassUse] = useState<Record<string, number>>({}); // passId → 이번에 차감할 횟수
+  const [passBuys, setPassBuys] = useState<
+    { serviceId: string; serviceName: string; partId: PartId; count: number; amount: number }[]
+  >([]);
+  // 회수권 구매 입력 폼
+  const [buyServiceId, setBuyServiceId] = useState("");
+  const [buyCount, setBuyCount] = useState(10);
+  const [buyAmount, setBuyAmount] = useState(0);
   // 수정 모드에서 불러온 기존 시술 — allServices 로드 후 갯수/할인/결제방식으로 역산
   const [pendingSales, setPendingSales] = useState<VisitSaleLine[] | null>(null);
   const [memo, setMemo] = useState("");
@@ -85,7 +97,17 @@ export default function VisitChartPage({
       const data = await getDataSource();
       const p = await data.patients.get(id);
       const visits = p ? await data.visits.listByPatient(id) : [];
+      // 회수권 — 테이블 미생성/권한 등으로 실패해도 페이지는 떠야 하므로 방어적으로
+      let passes: ServicePass[] = [];
+      if (p) {
+        try {
+          passes = await data.passes.listByPatient(id);
+        } catch {
+          passes = [];
+        }
+      }
       if (cancelled) return;
+      setPatientPasses(passes);
 
       setPatient(p);
 
@@ -282,6 +304,53 @@ export default function VisitChartPage({
     });
   }
 
+  const { services } = useServicesByPart(partId);
+
+  // 회수권 구매 폼 — 시술/횟수 선택 시 금액을 (단가 × 횟수)로 자동 제안 (수정 가능)
+  useEffect(() => {
+    const svc = services.find((s) => s.id === buyServiceId);
+    if (svc) setBuyAmount(svc.defaultPrice * buyCount);
+  }, [buyServiceId, buyCount, services]);
+
+  function setPassUseCount(passId: string, n: number, max: number) {
+    const c = Math.min(max, Math.max(0, n));
+    setPassUse((d) => {
+      const copy = { ...d };
+      if (c <= 0) delete copy[passId];
+      else copy[passId] = c;
+      return copy;
+    });
+  }
+
+  function addPassBuy() {
+    const svc = services.find((s) => s.id === buyServiceId);
+    if (!svc) {
+      alert("회수권으로 등록할 시술을 선택하세요.");
+      return;
+    }
+    if (buyCount < 1) {
+      alert("횟수는 1회 이상이어야 합니다.");
+      return;
+    }
+    setPassBuys((arr) => [
+      ...arr,
+      {
+        serviceId: svc.id,
+        serviceName: svc.name,
+        partId: svc.partId,
+        count: buyCount,
+        amount: Math.max(0, buyAmount),
+      },
+    ]);
+    setBuyServiceId("");
+    setBuyCount(10);
+    setBuyAmount(0);
+  }
+
+  function removePassBuy(idx: number) {
+    setPassBuys((arr) => arr.filter((_, i) => i !== idx));
+  }
+
   // 저장용 — 할인 적용 최종액을 라인별로 분배하고 결제방식(현금/카드)에 몰아준다.
   // 라운딩 오차는 첫 라인이 흡수해 합계가 finalTotal과 정확히 일치하도록 보정.
   function buildSales(): VisitSaleLine[] {
@@ -298,17 +367,41 @@ export default function VisitChartPage({
     }));
   }
 
+  // 회수권 차감 대상 (count>0) — 0원 시술 라인으로 차트에 남긴다.
+  const passUseEntries = patientPasses
+    .map((p) => ({ pass: p, count: passUse[p.id] ?? 0 }))
+    .filter((e) => e.count > 0);
+
   async function handleSave() {
     if (!patient) return;
-    if (calc.lines.length === 0) {
-      alert("담긴 시술이 없습니다. 시술 버튼을 눌러 추가하세요.");
+
+    // 회수권 구매(유료) 라인 — 할인 미적용, 결제방식에 몰아줌
+    const passBuyLines: VisitSaleLine[] = passBuys.map((b) => ({
+      serviceId: b.serviceId,
+      serviceName: `${b.serviceName} ${b.count}회권`,
+      partId: b.partId,
+      cash: payMethod === "cash" ? b.amount : 0,
+      card: payMethod === "card" ? b.amount : 0,
+    }));
+    // 회수권 사용(차감) 라인 — 결제 0원, 기록용
+    const passUseLines: VisitSaleLine[] = passUseEntries.map((e) => ({
+      serviceId: e.pass.serviceId,
+      serviceName: `${e.pass.serviceName} (회수권 ${e.count}회 사용)`,
+      partId: e.pass.partId,
+      cash: 0,
+      card: 0,
+    }));
+
+    const sales = [...buildSales(), ...passBuyLines, ...passUseLines];
+
+    if (sales.length === 0) {
+      alert("담긴 시술이 없습니다. 시술·회수권 버튼을 눌러 추가하세요.");
       return;
     }
-    // 최종액 0원(100% 할인=서비스 시술)도 기록 가능 — 차트에 남긴다.
+    // 최종액 0원(100% 할인 / 회수권 차감)도 기록 가능 — 차트에 남긴다.
     setSaving(true);
     try {
       const data = await getDataSource();
-      const sales = buildSales();
       if (isEdit && editVisitId) {
         // null 을 명시적으로 보내야 DB 의 기존 값을 지울 수 있다.
         // undefined 는 update 에서 "변경 안 함" 으로 해석되어 빈 값이 저장되지 않는다.
@@ -321,7 +414,7 @@ export default function VisitChartPage({
           afterPhotoUrl: afterPhoto,
         });
       } else {
-        await data.visits.create({
+        const visit = await data.visits.create({
           patientId: patient.id,
           centerId: patient.centerId,
           visitDate,
@@ -331,6 +424,21 @@ export default function VisitChartPage({
           beforePhotoUrl: beforePhoto ?? undefined,
           afterPhotoUrl: afterPhoto ?? undefined,
         });
+        // 회수권 구매 → 새 패키지 생성 / 사용 → 기존 패키지 차감
+        for (const b of passBuys) {
+          await data.passes.purchase({
+            patientId: patient.id,
+            centerId: patient.centerId,
+            serviceId: b.serviceId,
+            serviceName: b.serviceName,
+            partId: b.partId,
+            totalCount: b.count,
+            purchaseVisitId: visit.id,
+          });
+        }
+        for (const e of passUseEntries) {
+          await data.passes.use(e.pass.id, e.count);
+        }
       }
       router.push(`/owner/patients/${patient.id}`);
     } catch (err) {
@@ -356,8 +464,6 @@ export default function VisitChartPage({
       setSaving(false);
     }
   }
-
-  const { services } = useServicesByPart(partId);
 
   if (loading) {
     return (
@@ -702,6 +808,164 @@ export default function VisitChartPage({
             </div>
           </CardBody>
         </Card>
+
+        {/* 회수권 — 신규 방문에서만 (수정 모드는 잔여 횟수 꼬임 방지로 제외) */}
+        {!isEdit && (
+          <Card>
+            <CardHeader>
+              <CardTitle>회수권</CardTitle>
+            </CardHeader>
+            <CardBody className="space-y-4">
+              {/* 보유 회수권 차감 */}
+              {patientPasses.filter((p) => passRemaining(p) > 0).length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-xs uppercase tracking-wider text-sand-500">
+                    보유 회수권 — 사용(차감)
+                  </div>
+                  {patientPasses
+                    .filter((p) => passRemaining(p) > 0)
+                    .map((p) => {
+                      const remain = passRemaining(p);
+                      const use = passUse[p.id] ?? 0;
+                      return (
+                        <div
+                          key={p.id}
+                          className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 transition ${
+                            use > 0
+                              ? "border-moss-400 bg-moss-500/5"
+                              : "border-sand-200 bg-white"
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-medium text-sand-800">
+                              {p.serviceName}
+                            </div>
+                            <div className="text-xs tabular text-sand-500">
+                              {remain}회 남음 (총 {p.totalCount}회)
+                              {use > 0 && (
+                                <span className="ml-1 font-semibold text-moss-600">
+                                  → 사용 후 {remain - use}회
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setPassUseCount(p.id, use - 1, remain)}
+                              className="flex h-8 w-8 items-center justify-center rounded-full bg-sand-200 text-lg font-bold text-sand-700 active:scale-95"
+                            >
+                              −
+                            </button>
+                            <span className="w-6 text-center text-base font-bold tabular text-sand-800">
+                              {use}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setPassUseCount(p.id, use + 1, remain)}
+                              className="flex h-8 w-8 items-center justify-center rounded-full bg-moss-500 text-lg font-bold text-white active:scale-95 disabled:opacity-40"
+                              disabled={use >= remain}
+                            >
+                              ＋
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+
+              {/* 회수권 구매 */}
+              <div className="space-y-2">
+                <div className="text-xs uppercase tracking-wider text-sand-500">
+                  회수권 구매 (이번에 결제)
+                </div>
+                {passBuys.length > 0 && (
+                  <div className="space-y-1.5">
+                    {passBuys.map((b, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between gap-2 rounded-lg bg-clay-500/5 px-3 py-2 text-sm"
+                      >
+                        <span className="min-w-0 truncate text-sand-800">
+                          {b.serviceName}{" "}
+                          <span className="font-semibold text-clay-600">
+                            {b.count}회권
+                          </span>
+                        </span>
+                        <span className="flex items-center gap-2">
+                          <span className="font-semibold tabular text-sand-800">
+                            {fmtWon(b.amount)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removePassBuy(i)}
+                            className="rounded bg-sand-200 px-1.5 text-xs text-sand-600"
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="rounded-xl border border-sand-200 bg-white p-3 space-y-2">
+                  <select
+                    value={buyServiceId}
+                    onChange={(e) => setBuyServiceId(e.target.value)}
+                    className="w-full rounded-lg border border-sand-200 bg-white px-2 py-2 text-sm focus:border-clay-400 focus:outline-none"
+                  >
+                    <option value="">시술 선택…</option>
+                    {services.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({fmtWon(s.defaultPrice)})
+                      </option>
+                    ))}
+                  </select>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="text-xs text-sand-600">
+                      횟수
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        value={buyCount || ""}
+                        onChange={(e) =>
+                          setBuyCount(Math.max(1, Number(e.target.value) || 0))
+                        }
+                        className="mt-0.5 w-full rounded-lg border border-sand-200 bg-white px-2 py-1.5 text-right text-sm tabular focus:border-clay-400 focus:outline-none"
+                      />
+                    </label>
+                    <label className="text-xs text-sand-600">
+                      결제 금액
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        value={buyAmount || ""}
+                        onChange={(e) =>
+                          setBuyAmount(Math.max(0, Number(e.target.value) || 0))
+                        }
+                        className="mt-0.5 w-full rounded-lg border border-sand-200 bg-white px-2 py-1.5 text-right text-sm tabular focus:border-clay-400 focus:outline-none"
+                      />
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addPassBuy}
+                    className="w-full rounded-lg bg-clay-500/10 px-3 py-2 text-sm font-semibold text-clay-700 active:scale-[0.99]"
+                  >
+                    ＋ 회수권 담기
+                  </button>
+                </div>
+              </div>
+              <p className="text-[11px] text-sand-500">
+                구매한 회수권은 결제 금액이 이번 매출에 합산되고, 다음 방문부터 ‘사용’으로
+                1회씩 차감됩니다.
+              </p>
+            </CardBody>
+          </Card>
+        )}
 
         {/* 진료 메모 */}
         <Card>

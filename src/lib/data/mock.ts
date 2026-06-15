@@ -21,6 +21,8 @@ import type {
   ReservationUpdateInput,
   SalesSummary,
   ServiceCreateInput,
+  ServicePass,
+  ServicePassCreateInput,
   ServiceRecord,
   ServiceUpdateInput,
   SettlementRule,
@@ -678,6 +680,18 @@ export const mockDataSource: DataSource = {
     },
     async addEntry(_input: LoyaltyCreateInput): Promise<LoyaltyEntry> {
       throw new Error("적립금은 Supabase 모드에서만 사용 가능합니다.");
+    },
+  },
+
+  passes: {
+    async listByPatient(_patientId: string): Promise<ServicePass[]> {
+      return [];
+    },
+    async purchase(_input: ServicePassCreateInput): Promise<ServicePass> {
+      throw new Error("회수권은 Supabase 모드에서만 사용 가능합니다.");
+    },
+    async use(_passId: string, _count?: number): Promise<ServicePass> {
+      throw new Error("회수권은 Supabase 모드에서만 사용 가능합니다.");
     },
   },
 

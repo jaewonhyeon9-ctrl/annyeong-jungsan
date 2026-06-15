@@ -9,8 +9,10 @@ import {
   INFLOW_CHANNELS,
   PARTS,
   PATIENT_TAGS,
+  passRemaining,
   type Patient,
   type PatientTag,
+  type ServicePass,
   type Visit,
 } from "@/lib/types";
 
@@ -22,6 +24,7 @@ export default function PatientDetailPage({
   const { id } = use(params);
   const [patient, setPatient] = useState<Patient | null>(null);
   const [visits, setVisits] = useState<Visit[]>([]);
+  const [passes, setPasses] = useState<ServicePass[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   async function handleToggleTag(tag: PatientTag) {
@@ -45,9 +48,18 @@ export default function PatientDetailPage({
       const data = await getDataSource();
       const p = await data.patients.get(id);
       const vs = p ? await data.visits.listByPatient(id) : [];
+      let ps: ServicePass[] = [];
+      if (p) {
+        try {
+          ps = await data.passes.listByPatient(id);
+        } catch {
+          ps = [];
+        }
+      }
       if (!cancelled) {
         setPatient(p);
         setVisits(vs);
+        setPasses(ps);
         setLoaded(true);
       }
     })();
@@ -290,6 +302,60 @@ export default function PatientDetailPage({
             ✎
           </Link>
         </div>
+
+        {/* 회수권 잔여 */}
+        {passes.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>회수권</CardTitle>
+            </CardHeader>
+            <CardBody>
+              <div className="space-y-2">
+                {passes
+                  .slice()
+                  .sort(
+                    (a, b) => passRemaining(b) - passRemaining(a)
+                  )
+                  .map((p) => {
+                    const remain = passRemaining(p);
+                    const done = remain <= 0;
+                    return (
+                      <div
+                        key={p.id}
+                        className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2.5 ${
+                          done ? "bg-sand-100/40" : "bg-moss-500/5"
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium text-sand-800">
+                            {p.serviceName}
+                          </div>
+                          <div className="text-[11px] text-sand-500">
+                            {partLabel(p.partId)} · {fmtDate(p.createdAt.slice(0, 10))} 등록
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div
+                            className={`text-base font-bold tabular ${
+                              done ? "text-sand-400" : "text-moss-600"
+                            }`}
+                          >
+                            {done ? "소진" : `${remain}회 남음`}
+                          </div>
+                          <div className="text-[10px] tabular text-sand-500">
+                            {p.usedCount}/{p.totalCount}회 사용
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+              <p className="mt-2 text-[10px] text-sand-500">
+                방문 차트 작성 시 ‘회수권 사용’으로 1회씩 차감됩니다.
+              </p>
+            </CardBody>
+          </Card>
+        )}
 
         {/* 방문 이력 */}
         <Card>

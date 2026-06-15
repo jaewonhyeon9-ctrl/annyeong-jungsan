@@ -17,6 +17,8 @@ import type {
   ReservationUpdateInput,
   SalesSummary,
   ServiceCreateInput,
+  ServicePass,
+  ServicePassCreateInput,
   ServiceRecord,
   ServiceUpdateInput,
   SettlementRule,
@@ -141,6 +143,12 @@ export interface DataSource {
   loyalty: {
     historyByPatient(patientId: string): Promise<LoyaltyEntry[]>;
     addEntry(input: LoyaltyCreateInput): Promise<LoyaltyEntry>; // 적립/사용 (delta 부호로 구분)
+  };
+  // 회수권 — N회 패키지 구매 후 방문마다 차감
+  passes: {
+    listByPatient(patientId: string): Promise<ServicePass[]>;
+    purchase(input: ServicePassCreateInput): Promise<ServicePass>;
+    use(passId: string, count?: number): Promise<ServicePass>; // count 만큼 사용(차감)
   };
   // 매출 통계
   stats: {

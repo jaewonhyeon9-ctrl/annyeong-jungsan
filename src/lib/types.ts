@@ -238,6 +238,38 @@ export interface LoyaltyCreateInput {
 }
 
 // ============================================================
+// 회수권 (Service Pass) — N회 패키지 구매 → 방문마다 차감
+// ============================================================
+export interface ServicePass {
+  id: string;
+  patientId: string;
+  centerId: string;
+  serviceId: string;
+  serviceName: string; // snapshot
+  partId: PartId;
+  totalCount: number; // 구매한 총 횟수
+  usedCount: number; // 사용한 횟수
+  note: string | null;
+  createdAt: string;
+}
+
+// 남은 횟수 = totalCount - usedCount
+export function passRemaining(p: ServicePass): number {
+  return Math.max(0, p.totalCount - p.usedCount);
+}
+
+export interface ServicePassCreateInput {
+  patientId: string;
+  centerId: string;
+  serviceId: string;
+  serviceName: string;
+  partId: PartId;
+  totalCount: number;
+  purchaseVisitId?: string | null;
+  note?: string | null;
+}
+
+// ============================================================
 // 통계 — 가벼운 집계 결과 타입
 // ============================================================
 export interface SalesSummary {
