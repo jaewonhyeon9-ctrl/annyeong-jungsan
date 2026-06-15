@@ -8,11 +8,13 @@ import { fmtDate, todayKST } from "@/lib/format";
 import { useAllServices } from "@/lib/services";
 import {
   PARTS,
+  passRemaining,
   RESERVATION_STATUS_LABELS,
   type PartId,
   type Patient,
   type Reservation,
   type ReservationStatus,
+  type ServicePass,
   type UserProfile,
 } from "@/lib/types";
 import { useCurrentCenter } from "@/lib/use-current-center";
@@ -96,6 +98,12 @@ export default function OwnerReservationsPage() {
   const [editing, setEditing] = useState<Reservation | null>(null);
   const [showForm, setShowForm] = useState(false);
 
+  // 완료 처리 + 회수권 차감 모달
+  const [completing, setCompleting] = useState<{
+    reservation: Reservation;
+    passes: ServicePass[];
+  } | null>(null);
+
   // 시술자 — 예약에 입력된 이름 + 이번 세션에 직접 추가한 이름 (칸 분할 기준)
   const [extraPractitioners, setExtraPractitioners] = useState<string[]>([]);
 
@@ -151,6 +159,18 @@ export default function OwnerReservationsPage() {
         : list;
     setDayReservations(filtered);
   }, [centerId, selectedDate, profile]);
+
+  // 완료 확정 — 선택한 회수권이 있으면 1회 차감하고 예약에 기록
+  async function confirmComplete(r: Reservation, passId: string | null) {
+    const data = await getDataSource();
+    if (passId) await data.passes.use(passId, 1);
+    await data.reservations.update(r.id, {
+      status: "completed",
+      deductedPassId: passId,
+    });
+    setCompleting(null);
+    await Promise.all([refreshMonth(), refreshDay()]);
+  }
 
   // 메타: owners + patients
   useEffect(() => {
@@ -354,6 +374,7 @@ export default function OwnerReservationsPage() {
                 serviceName: null,
                 status: "scheduled",
                 memo: null,
+                deductedPassId: null,
                 createdBy: null,
                 createdAt: "",
                 updatedAt: null,
@@ -367,10 +388,39 @@ export default function OwnerReservationsPage() {
             }}
             onQuickComplete={async (r) => {
               const data = await getDataSource();
-              const next: ReservationStatus =
-                r.status === "completed" ? "scheduled" : "completed";
-              await data.reservations.update(r.id, { status: next });
-              await Promise.all([refreshMonth(), refreshDay()]);
+              if (r.status === "completed") {
+                // 완료 취소 — 차감했던 회수권 복원
+                if (r.deductedPassId) {
+                  try {
+                    await data.passes.use(r.deductedPassId, -1);
+                  } catch {
+                    // 이미 변동됐으면 무시 (best-effort 복원)
+                  }
+                }
+                await data.reservations.update(r.id, {
+                  status: "scheduled",
+                  deductedPassId: null,
+                });
+                await Promise.all([refreshMonth(), refreshDay()]);
+                return;
+              }
+              // 완료 — 환자 보유 회수권 있으면 차감 모달, 없으면 바로 완료
+              let passes: ServicePass[] = [];
+              if (r.patientId) {
+                try {
+                  passes = (await data.passes.listByPatient(r.patientId)).filter(
+                    (p) => passRemaining(p) > 0
+                  );
+                } catch {
+                  passes = [];
+                }
+              }
+              if (passes.length > 0) {
+                setCompleting({ reservation: r, passes });
+              } else {
+                await data.reservations.update(r.id, { status: "completed" });
+                await Promise.all([refreshMonth(), refreshDay()]);
+              }
             }}
           />
         </CardBody>
@@ -399,6 +449,129 @@ export default function OwnerReservationsPage() {
           }}
         />
       )}
+
+      {completing && (
+        <CompleteModal
+          reservation={completing.reservation}
+          passes={completing.passes}
+          onCancel={() => setCompleting(null)}
+          onConfirm={(passId) => confirmComplete(completing.reservation, passId)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ====================== 완료 + 회수권 차감 모달 ======================
+
+function CompleteModal({
+  reservation,
+  passes,
+  onCancel,
+  onConfirm,
+}: {
+  reservation: Reservation;
+  passes: ServicePass[];
+  onCancel: () => void;
+  onConfirm: (passId: string | null) => void | Promise<void>;
+}) {
+  // 예약 시술과 같은 회수권을 기본 선택 (없으면 차감 안 함)
+  const [selected, setSelected] = useState<string | null>(
+    () =>
+      passes.find((p) => p.serviceId === reservation.serviceId)?.id ?? null
+  );
+  const [saving, setSaving] = useState(false);
+
+  async function handleConfirm() {
+    setSaving(true);
+    try {
+      await onConfirm(selected);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-30 flex items-center justify-center bg-sand-900/40 p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+        <div className="mb-1 text-base font-bold text-sand-900">시술 완료</div>
+        <div className="mb-3 text-xs text-sand-500">
+          {reservation.patientName ?? "환자"}
+          {reservation.serviceName ? ` · ${reservation.serviceName}` : ""}
+        </div>
+
+        <div className="mb-2 text-xs font-medium text-sand-600">
+          회수권 차감 (1회)
+        </div>
+        <div className="space-y-1.5">
+          {passes.map((p) => {
+            const on = selected === p.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setSelected(on ? null : p.id)}
+                className={`flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left transition ${
+                  on
+                    ? "border-moss-500 bg-moss-500/10"
+                    : "border-sand-200 bg-white"
+                }`}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium text-sand-800">
+                    {p.serviceName}
+                  </span>
+                  <span className="block text-[11px] text-sand-500 tabular">
+                    {passRemaining(p)}회 남음 → {passRemaining(p) - 1}회
+                  </span>
+                </span>
+                <span
+                  className={`shrink-0 text-sm font-bold ${
+                    on ? "text-moss-600" : "text-sand-300"
+                  }`}
+                >
+                  {on ? "✓ 차감" : "선택"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setSelected(null)}
+          className={`mt-2 w-full rounded-lg px-3 py-2 text-xs font-medium transition ${
+            selected === null
+              ? "bg-sand-200 text-sand-700"
+              : "bg-sand-100 text-sand-500"
+          }`}
+        >
+          회수권 차감 안 함 (일반 완료)
+        </button>
+
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={saving}
+            className="rounded-lg border border-sand-200 px-4 py-2 text-sm text-sand-700 disabled:opacity-60"
+          >
+            취소
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={saving}
+            className="rounded-lg bg-moss-600 px-4 py-2 text-sm font-semibold text-white hover:bg-moss-700 disabled:opacity-60"
+          >
+            {saving
+              ? "처리 중..."
+              : selected
+              ? "완료 + 차감"
+              : "완료"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -622,6 +622,7 @@ export const mockDataSource: DataSource = {
         serviceName: input.serviceName ?? null,
         status: input.status ?? "scheduled",
         memo: input.memo ?? null,
+        deductedPassId: input.deductedPassId ?? null,
         createdBy: null,
         createdAt: now,
         updatedAt: null,

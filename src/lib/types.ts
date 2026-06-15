@@ -157,6 +157,7 @@ export interface Reservation {
   serviceName: string | null;
   status: ReservationStatus;
   memo: string | null;
+  deductedPassId: string | null; // 완료 시 차감한 회수권 (취소 시 복원용)
   createdBy: string | null;
   createdAt: string;
   updatedAt: string | null;
@@ -176,6 +177,7 @@ export interface ReservationCreateInput {
   serviceName?: string | null;
   status?: ReservationStatus;
   memo?: string | null;
+  deductedPassId?: string | null;
 }
 
 export type ReservationUpdateInput = Partial<
