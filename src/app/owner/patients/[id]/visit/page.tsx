@@ -25,7 +25,7 @@ import { useCurrentProfile } from "@/lib/use-current-profile";
 // 입력 보조 상태 — 시술별 "갯수"만 들고 있고, 결제액은 (단가 × 갯수 − 할인)으로
 // 계산한다. 저장 시점에 기존 VisitSaleLine(cash/card) 형식으로 변환하므로
 // 정산/통계 로직은 그대로 유지된다.
-const DISCOUNT_PRESETS = [0, 5, 10, 15, 20, 30];
+const DISCOUNT_PRESETS = [0, 10, 20, 30, 50, 100];
 
 export default function VisitChartPage({
   params,
@@ -304,10 +304,7 @@ export default function VisitChartPage({
       alert("담긴 시술이 없습니다. 시술 버튼을 눌러 추가하세요.");
       return;
     }
-    if (calc.finalTotal <= 0) {
-      alert("결제 금액이 0원입니다. 갯수/할인율을 확인하세요.");
-      return;
-    }
+    // 최종액 0원(100% 할인=서비스 시술)도 기록 가능 — 차트에 남긴다.
     setSaving(true);
     try {
       const data = await getDataSource();
