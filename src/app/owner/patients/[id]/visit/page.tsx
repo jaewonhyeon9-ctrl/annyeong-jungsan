@@ -10,13 +10,22 @@ import { resizeToDataUrl } from "@/lib/image";
 import { useServicesByPart, useAllServices } from "@/lib/services";
 import { ocrFromFile } from "@/lib/ocr/client";
 import type { PosOcrData } from "@/lib/ocr/types";
-import { PARTS, type Patient, type PartId } from "@/lib/types";
+import {
+  PARTS,
+  type Patient,
+  type PartId,
+  type PaymentMethod,
+  type VisitSaleLine,
+} from "@/lib/types";
 import { useCurrentProfile } from "@/lib/use-current-profile";
 
 // 환자의 방문 차트 작성/수정 — 시술/결제 + 진료 메모 + 사진 (옵션)
 // ?edit=<visitId> 파라미터가 있으면 해당 visit을 불러와 수정 모드로 전환.
 
-type SaleDraft = Record<string, { cash: number; card: number }>;
+// 입력 보조 상태 — 시술별 "갯수"만 들고 있고, 결제액은 (단가 × 갯수 − 할인)으로
+// 계산한다. 저장 시점에 기존 VisitSaleLine(cash/card) 형식으로 변환하므로
+// 정산/통계 로직은 그대로 유지된다.
+const DISCOUNT_PRESETS = [0, 5, 10, 15, 20, 30];
 
 export default function VisitChartPage({
   params,
@@ -45,7 +54,11 @@ export default function VisitChartPage({
 
   const [visitDate, setVisitDate] = useState(todayKST());
   const [partId, setPartId] = useState<PartId>("scalp");
-  const [draft, setDraft] = useState<SaleDraft>({});
+  const [qty, setQty] = useState<Record<string, number>>({});
+  const [discountRate, setDiscountRate] = useState(0);
+  const [payMethod, setPayMethod] = useState<PaymentMethod>("card");
+  // 수정 모드에서 불러온 기존 시술 — allServices 로드 후 갯수/할인/결제방식으로 역산
+  const [pendingSales, setPendingSales] = useState<VisitSaleLine[] | null>(null);
   const [memo, setMemo] = useState("");
   const [saving, setSaving] = useState(false);
   const [beforePhoto, setBeforePhoto] = useState<string | null>(null);
@@ -82,11 +95,7 @@ export default function VisitChartPage({
         if (visit && !cancelled) {
           setVisitDate(visit.visitDate);
           setPartId(visit.partId);
-          const d: SaleDraft = {};
-          for (const s of visit.sales) {
-            d[s.serviceId] = { cash: s.cash, card: s.card };
-          }
-          setDraft(d);
+          setPendingSales(visit.sales);
           setMemo(visit.visitMemo ?? "");
           setBeforePhoto(visit.beforePhotoUrl ?? null);
           setAfterPhoto(visit.afterPhotoUrl ?? null);
@@ -111,6 +120,34 @@ export default function VisitChartPage({
     if (!isEdit && profile?.role === "owner" && profile.partId)
       setPartId(profile.partId);
   }, [profile, isEdit]);
+
+  // 수정 모드 — 불러온 기존 시술(cash/card)을 갯수·할인율·결제방식으로 역산.
+  // 단가가 있어야 갯수를 추정할 수 있으므로 allServices 로드 후 실행.
+  useEffect(() => {
+    if (!pendingSales || allServices.length === 0) return;
+    const nextQty: Record<string, number> = {};
+    let cashSum = 0;
+    let cardSum = 0;
+    let grossSum = 0;
+    for (const s of pendingSales) {
+      const price = allServices.find((x) => x.id === s.serviceId)?.defaultPrice ?? 0;
+      const paid = s.cash + s.card;
+      const q = price > 0 ? Math.max(1, Math.round(paid / price)) : 1;
+      nextQty[s.serviceId] = q;
+      cashSum += s.cash;
+      cardSum += s.card;
+      grossSum += price * q;
+    }
+    setQty(nextQty);
+    setPayMethod(cardSum >= cashSum ? "card" : "cash");
+    const paidTotal = cashSum + cardSum;
+    setDiscountRate(
+      grossSum > 0 && paidTotal < grossSum
+        ? Math.round((1 - paidTotal / grossSum) * 100)
+        : 0
+    );
+    setPendingSales(null);
+  }, [pendingSales, allServices]);
 
   async function onPhotoPicked(
     file: File,
@@ -154,22 +191,32 @@ export default function VisitChartPage({
       if (data?.date) setVisitDate(data.date);
 
       const items = data?.items ?? [];
-      const next: SaleDraft = { ...draft };
+      const nextQty: Record<string, number> = { ...qty };
       const unmatched: string[] = [];
       const partCount: Record<string, number> = {};
+      let cashSum = 0;
+      let cardSum = 0;
       let matched = 0;
 
       for (const it of items) {
         const svc = matchService(it.serviceName, allServices);
         if (svc) {
-          next[svc.id] = { cash: it.cash || 0, card: it.card || 0 };
+          const paid = (it.cash || 0) + (it.card || 0);
+          // 영수증 금액 → 단가로 나눠 갯수 추정 (단가 없으면 1개)
+          nextQty[svc.id] =
+            svc.defaultPrice > 0
+              ? Math.max(1, Math.round(paid / svc.defaultPrice))
+              : 1;
+          cashSum += it.cash || 0;
+          cardSum += it.card || 0;
           partCount[svc.partId] = (partCount[svc.partId] ?? 0) + 1;
           matched++;
         } else if (it.serviceName?.trim()) {
           unmatched.push(it.serviceName.trim());
         }
       }
-      setDraft(next);
+      setQty(nextQty);
+      if (cashSum + cardSum > 0) setPayMethod(cardSum >= cashSum ? "card" : "cash");
 
       // 매칭된 시술이 보이도록 가장 많이 매칭된 파트로 전환 (권한 내에서만)
       const parts = Object.keys(partCount).sort(
@@ -200,44 +247,71 @@ export default function VisitChartPage({
     }
   }
 
-  const total = useMemo(() => {
-    let cash = 0,
-      card = 0;
-    for (const v of Object.values(draft)) {
-      cash += v.cash;
-      card += v.card;
-    }
-    return { cash, card, total: cash + card };
-  }, [draft]);
+  // 담긴 시술(갯수>0) → 라인별 정가 합계. 파트가 달라도 전부 집계해 저장과 일치.
+  const calc = useMemo(() => {
+    const rate = Math.min(100, Math.max(0, discountRate));
+    const lines = Object.entries(qty)
+      .filter(([, q]) => q > 0)
+      .map(([id, q]) => {
+        const svc = allServices.find((s) => s.id === id);
+        const price = svc?.defaultPrice ?? 0;
+        return {
+          serviceId: id,
+          serviceName: svc?.name ?? id,
+          partId: (svc?.partId ?? partId) as PartId,
+          q,
+          gross: price * q,
+        };
+      });
+    const subtotal = lines.reduce((s, l) => s + l.gross, 0);
+    const discountAmount = Math.round((subtotal * rate) / 100);
+    const finalTotal = subtotal - discountAmount;
+    return { lines, subtotal, discountAmount, finalTotal, rate };
+  }, [qty, discountRate, allServices, partId]);
 
-  function setVal(serviceId: string, key: "cash" | "card", v: number) {
-    setDraft((d) => {
-      const existing = d[serviceId] ?? { cash: 0, card: 0 };
-      return { ...d, [serviceId]: { ...existing, [key]: v } };
+  function inc(serviceId: string) {
+    setQty((d) => ({ ...d, [serviceId]: (d[serviceId] ?? 0) + 1 }));
+  }
+  function dec(serviceId: string) {
+    setQty((d) => {
+      const next = (d[serviceId] ?? 0) - 1;
+      const copy = { ...d };
+      if (next <= 0) delete copy[serviceId];
+      else copy[serviceId] = next;
+      return copy;
     });
+  }
+
+  // 저장용 — 할인 적용 최종액을 라인별로 분배하고 결제방식(현금/카드)에 몰아준다.
+  // 라운딩 오차는 첫 라인이 흡수해 합계가 finalTotal과 정확히 일치하도록 보정.
+  function buildSales(): VisitSaleLine[] {
+    const factor = 1 - calc.rate / 100;
+    const amounts = calc.lines.map((l) => Math.round(l.gross * factor));
+    const diff = calc.finalTotal - amounts.reduce((a, b) => a + b, 0);
+    if (amounts.length > 0) amounts[0] += diff;
+    return calc.lines.map((l, i) => ({
+      serviceId: l.serviceId,
+      serviceName: l.serviceName,
+      partId: l.partId,
+      cash: payMethod === "cash" ? amounts[i] : 0,
+      card: payMethod === "card" ? amounts[i] : 0,
+    }));
   }
 
   async function handleSave() {
     if (!patient) return;
-    const filled = Object.entries(draft).filter(([, v]) => v.cash + v.card > 0);
-    if (filled.length === 0) {
-      alert("입력된 시술이 없습니다.");
+    if (calc.lines.length === 0) {
+      alert("담긴 시술이 없습니다. 시술 버튼을 눌러 추가하세요.");
+      return;
+    }
+    if (calc.finalTotal <= 0) {
+      alert("결제 금액이 0원입니다. 갯수/할인율을 확인하세요.");
       return;
     }
     setSaving(true);
     try {
       const data = await getDataSource();
-      const sales = filled.map(([serviceId, v]) => {
-        const svc = allServices.find((s) => s.id === serviceId);
-        if (!svc) throw new Error(`알 수 없는 시술 ID: ${serviceId}`);
-        return {
-          serviceId,
-          serviceName: svc.name,
-          partId: svc.partId,
-          cash: v.cash,
-          card: v.card,
-        };
-      });
+      const sales = buildSales();
       if (isEdit && editVisitId) {
         // null 을 명시적으로 보내야 DB 의 기존 값을 지울 수 있다.
         // undefined 는 update 에서 "변경 안 함" 으로 해석되어 빈 값이 저장되지 않는다.
@@ -443,7 +517,7 @@ export default function VisitChartPage({
                     type="button"
                     onClick={() => {
                       setPartId(p.id);
-                      setDraft({});
+                      setQty({});
                     }}
                     className={`rounded-lg border px-3 py-2 text-xs font-medium transition ${
                       partId === p.id
@@ -465,68 +539,168 @@ export default function VisitChartPage({
             <CardTitle>이번 방문 시술 / 결제</CardTitle>
           </CardHeader>
           <CardBody>
-            <div className="grid grid-cols-[1fr_5rem_5rem] items-center gap-2 pb-2 text-[11px] uppercase tracking-wider text-sand-500">
-              <div>시술</div>
-              <div className="text-right">현금</div>
-              <div className="text-right">카드</div>
+            <div className="pb-2 text-[11px] text-sand-500">
+              시술 버튼을 눌러 담고, − / ＋ 로 갯수를 조절하세요.
             </div>
-            <div className="space-y-2">
-              {services.map((svc) => {
-                const v = draft[svc.id] ?? { cash: 0, card: 0 };
-                return (
-                  <div
-                    key={svc.id}
-                    className="grid grid-cols-[1fr_5rem_5rem] items-center gap-2"
-                  >
-                    <div className="truncate text-sm text-sand-800">
-                      {svc.name}
-                      <span className="ml-1 text-xs text-sand-500 tabular">
-                        ({fmtWon(svc.defaultPrice)})
-                      </span>
+            {services.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-sand-300 bg-sand-50 px-3 py-6 text-center text-xs text-sand-500">
+                이 파트에 등록된 시술이 없습니다.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {services.map((svc) => {
+                  const q = qty[svc.id] ?? 0;
+                  const active = q > 0;
+                  return (
+                    <div
+                      key={svc.id}
+                      className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 transition ${
+                        active
+                          ? "border-clay-400 bg-clay-500/5"
+                          : "border-sand-200 bg-white"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => inc(svc.id)}
+                        className="min-w-0 flex-1 text-left"
+                      >
+                        <div className="truncate text-sm font-medium text-sand-800">
+                          {svc.name}
+                        </div>
+                        <div className="text-xs tabular text-sand-500">
+                          {fmtWon(svc.defaultPrice)}
+                          {active && (
+                            <span className="ml-1 font-semibold text-clay-600">
+                              × {q} = {fmtWon(svc.defaultPrice * q)}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                      {active ? (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => dec(svc.id)}
+                            className="flex h-8 w-8 items-center justify-center rounded-full bg-sand-200 text-lg font-bold text-sand-700 active:scale-95"
+                          >
+                            −
+                          </button>
+                          <span className="w-6 text-center text-base font-bold tabular text-sand-800">
+                            {q}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => inc(svc.id)}
+                            className="flex h-8 w-8 items-center justify-center rounded-full bg-clay-500 text-lg font-bold text-white active:scale-95"
+                          >
+                            ＋
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => inc(svc.id)}
+                          className="rounded-full bg-clay-500/10 px-4 py-2 text-xs font-semibold text-clay-700 active:scale-95"
+                        >
+                          담기
+                        </button>
+                      )}
                     </div>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      placeholder="0"
-                      value={v.cash || ""}
-                      onChange={(e) =>
-                        setVal(svc.id, "cash", Number(e.target.value) || 0)
-                      }
-                      className="rounded-lg border border-sand-200 bg-white px-2 py-1.5 text-right text-sm tabular focus:border-clay-400 focus:outline-none"
-                    />
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      placeholder="0"
-                      value={v.card || ""}
-                      onChange={(e) =>
-                        setVal(svc.id, "card", Number(e.target.value) || 0)
-                      }
-                      className="rounded-lg border border-sand-200 bg-white px-2 py-1.5 text-right text-sm tabular focus:border-clay-400 focus:outline-none"
-                    />
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
+            )}
+
+            {/* 합산 + 할인율 */}
+            <div className="mt-4 space-y-2.5 border-t border-sand-200 pt-3 text-sm">
+              <div className="flex items-center justify-between text-sand-700">
+                <span>시술 합계</span>
+                <span className="font-semibold tabular">
+                  {fmtWon(calc.subtotal)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-sand-700">할인율</span>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    max={100}
+                    placeholder="0"
+                    value={discountRate || ""}
+                    onChange={(e) =>
+                      setDiscountRate(
+                        Math.min(100, Math.max(0, Number(e.target.value) || 0))
+                      )
+                    }
+                    className="w-16 rounded-lg border border-sand-200 bg-white px-2 py-1.5 text-right text-sm tabular focus:border-clay-400 focus:outline-none"
+                  />
+                  <span className="text-sand-600">%</span>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5">
+                {DISCOUNT_PRESETS.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setDiscountRate(d)}
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                      discountRate === d
+                        ? "bg-clay-500 text-white"
+                        : "bg-sand-100 text-sand-600"
+                    }`}
+                  >
+                    {d}%
+                  </button>
+                ))}
+              </div>
+
+              {calc.discountAmount > 0 && (
+                <div className="flex items-center justify-between text-clay-600">
+                  <span>할인 금액</span>
+                  <span className="font-semibold tabular">
+                    − {fmtWon(calc.discountAmount)}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between border-t border-sand-200 pt-2.5">
+                <span className="font-semibold text-sand-800">최종 결제액</span>
+                <span className="text-lg font-bold tabular text-clay-600">
+                  {fmtWon(calc.finalTotal)}
+                </span>
+              </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-3 gap-3 border-t border-sand-200 pt-3 text-xs">
-              <div>
-                <div className="uppercase text-sand-500">현금</div>
-                <div className="font-semibold tabular text-sand-800">
-                  {fmtWon(total.cash)}
-                </div>
+            {/* 결제 방식 — 총액을 현금/카드 중 하나로 */}
+            <div className="mt-4 space-y-1.5">
+              <div className="text-xs uppercase tracking-wider text-sand-500">
+                결제 방식
               </div>
-              <div>
-                <div className="uppercase text-sand-500">카드</div>
-                <div className="font-semibold tabular text-sand-800">
-                  {fmtWon(total.card)}
-                </div>
-              </div>
-              <div>
-                <div className="uppercase text-sand-500">합계</div>
-                <div className="font-bold tabular text-clay-600">
-                  {fmtWon(total.total)}
-                </div>
+              <div className="grid grid-cols-2 gap-2">
+                {(
+                  [
+                    { id: "cash", label: "💵 현금" },
+                    { id: "card", label: "💳 카드" },
+                  ] as { id: PaymentMethod; label: string }[]
+                ).map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setPayMethod(m.id)}
+                    className={`rounded-xl border px-4 py-3 text-sm font-semibold transition ${
+                      payMethod === m.id
+                        ? "border-clay-500 bg-clay-500/10 text-clay-700"
+                        : "border-sand-200 bg-white text-sand-600"
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
               </div>
             </div>
           </CardBody>
