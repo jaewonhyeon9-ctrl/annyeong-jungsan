@@ -10,6 +10,7 @@ import type {
   Consultation,
   ConsultationCreateInput,
   ConsultationUpdateInput,
+  CrmPatientRow,
   DailyEntry,
   InflowEntry,
   LoyaltyCreateInput,
@@ -714,6 +715,9 @@ export const mockDataSource: DataSource = {
         patientName: string | null;
         total: number;
       }>;
+    },
+    async crm(_centerId: string): Promise<CrmPatientRow[]> {
+      return [];
     },
   },
 

@@ -289,6 +289,20 @@ export interface PatientSalesRow {
   lastVisitDate: string | null;
 }
 
+// CRM — 센터 전체 환자 1행 집계 (재방문/이탈 관리·세그먼트·대시보드 공용)
+export interface CrmPatientRow {
+  patientId: string;
+  name: string | null;
+  phone: string | null;
+  tags: PatientTag[];
+  inflowChannels: InflowChannel[];
+  firstVisitDate: string;
+  lastVisitDate: string | null;
+  visitCount: number;
+  totalRevenue: number;
+  passRemaining: number; // 보유 회수권 잔여 합계
+}
+
 export interface SaleLine {
   serviceId: string;
   serviceName: string; // snapshot — 시술명 바뀌어도 과거 기록 유지

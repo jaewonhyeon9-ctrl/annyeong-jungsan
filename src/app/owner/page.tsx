@@ -325,6 +325,14 @@ export default function OwnerHome() {
           <div className="text-[11px] text-sand-500">오늘 · 이번달 · TOP</div>
         </Link>
         <Link
+          href="/owner/crm"
+          className="rounded-2xl border-2 border-moss-300 bg-moss-500/10 px-4 py-4 text-center"
+        >
+          <div className="text-xl">🧑‍🤝‍🧑</div>
+          <div className="mt-1 text-sm font-semibold text-sand-800">CRM</div>
+          <div className="text-[11px] text-sand-500">재방문 · 세그먼트</div>
+        </Link>
+        <Link
           href="/owner/consultations"
           className="rounded-2xl border border-sand-200 bg-white/70 px-4 py-4 text-center"
         >

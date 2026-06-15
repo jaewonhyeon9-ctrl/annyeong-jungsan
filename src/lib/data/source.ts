@@ -6,6 +6,7 @@ import type {
   Consultation,
   ConsultationCreateInput,
   ConsultationUpdateInput,
+  CrmPatientRow,
   DailyEntry,
   InflowEntry,
   LoyaltyCreateInput,
@@ -166,5 +167,7 @@ export interface DataSource {
     outstandingByPatient(
       centerId: string
     ): Promise<Array<{ patientId: string; patientName: string | null; total: number }>>;
+    // CRM — 센터 전체 환자 집계 (방문/매출/회수권 잔여)
+    crm(centerId: string): Promise<CrmPatientRow[]>;
   };
 }

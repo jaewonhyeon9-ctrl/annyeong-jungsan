@@ -33,6 +33,7 @@ import type {
   Consultation,
   ConsultationCreateInput,
   ConsultationUpdateInput,
+  CrmPatientRow,
   LoyaltyCreateInput,
   LoyaltyEntry,
   PatientSalesRow,
@@ -1855,6 +1856,83 @@ export const supabaseDataSource: DataSource = {
           total: v.total,
         }))
         .sort((a, b) => b.total - a.total);
+    },
+    async crm(centerId): Promise<CrmPatientRow[]> {
+      const sb = createClient();
+      // 1) 환자 마스터 (이름/연락처/태그/유입/최초방문)
+      const { data: pData, error: pErr } = await sb
+        .from("patients")
+        .select(PATIENT_SELECT)
+        .eq("center_id", centerId);
+      if (pErr) throw pErr;
+      const patients: Patient[] = (
+        (pData ?? []) as Parameters<typeof rowToPatient>[0][]
+      ).map(rowToPatient);
+
+      // 2) 방문 집계 — 방문 수 + 마지막 방문일
+      const { data: vData, error: vErr } = await sb
+        .from("visits")
+        .select("patient_id, visit_date")
+        .eq("center_id", centerId);
+      if (vErr) throw vErr;
+      const visitAgg = new Map<string, { count: number; last: string | null }>();
+      for (const r of (vData ?? []) as { patient_id: string; visit_date: string }[]) {
+        const cur = visitAgg.get(r.patient_id) ?? { count: 0, last: null };
+        cur.count += 1;
+        if (!cur.last || r.visit_date > cur.last) cur.last = r.visit_date;
+        visitAgg.set(r.patient_id, cur);
+      }
+
+      // 3) 매출 집계 — visit_sale_lines (방문 조인으로 센터 필터)
+      const { data: sData, error: sErr } = await sb
+        .from("visit_sale_lines")
+        .select("cash, card, visit:visits!inner(patient_id, center_id)")
+        .eq("visit.center_id", centerId);
+      if (sErr) throw sErr;
+      const revAgg = new Map<string, number>();
+      for (const r of (sData ?? []) as Array<{
+        cash: number;
+        card: number;
+        visit:
+          | { patient_id: string }
+          | { patient_id: string }[];
+      }>) {
+        const vv = Array.isArray(r.visit) ? r.visit[0] : r.visit;
+        if (!vv) continue;
+        revAgg.set(vv.patient_id, (revAgg.get(vv.patient_id) ?? 0) + r.cash + r.card);
+      }
+
+      // 4) 회수권 잔여 합계
+      const { data: passData, error: passErr } = await sb
+        .from("service_passes")
+        .select("patient_id, total_count, used_count")
+        .eq("center_id", centerId);
+      if (passErr) throw passErr;
+      const passAgg = new Map<string, number>();
+      for (const r of (passData ?? []) as {
+        patient_id: string;
+        total_count: number;
+        used_count: number;
+      }[]) {
+        const remain = Math.max(0, r.total_count - r.used_count);
+        passAgg.set(r.patient_id, (passAgg.get(r.patient_id) ?? 0) + remain);
+      }
+
+      return patients.map((p) => {
+        const v = visitAgg.get(p.id);
+        return {
+          patientId: p.id,
+          name: p.personal?.name ?? null,
+          phone: p.personal?.phone ?? null,
+          tags: p.tags ?? [],
+          inflowChannels: p.inflowChannels,
+          firstVisitDate: p.firstVisitDate,
+          lastVisitDate: v?.last ?? null,
+          visitCount: v?.count ?? 0,
+          totalRevenue: revAgg.get(p.id) ?? 0,
+          passRemaining: passAgg.get(p.id) ?? 0,
+        };
+      });
     },
   },
 

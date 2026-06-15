@@ -10,6 +10,7 @@ import {
   PARTS,
   PATIENT_TAGS,
   passRemaining,
+  type Consultation,
   type Patient,
   type PatientTag,
   type ServicePass,
@@ -25,6 +26,7 @@ export default function PatientDetailPage({
   const [patient, setPatient] = useState<Patient | null>(null);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [passes, setPasses] = useState<ServicePass[]>([]);
+  const [consultations, setConsultations] = useState<Consultation[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   async function handleToggleTag(tag: PatientTag) {
@@ -49,17 +51,24 @@ export default function PatientDetailPage({
       const p = await data.patients.get(id);
       const vs = p ? await data.visits.listByPatient(id) : [];
       let ps: ServicePass[] = [];
+      let cs: Consultation[] = [];
       if (p) {
         try {
           ps = await data.passes.listByPatient(id);
         } catch {
           ps = [];
         }
+        try {
+          cs = await data.consultations.listByPatient(id);
+        } catch {
+          cs = [];
+        }
       }
       if (!cancelled) {
         setPatient(p);
         setVisits(vs);
         setPasses(ps);
+        setConsultations(cs);
         setLoaded(true);
       }
     })();
@@ -356,6 +365,91 @@ export default function PatientDetailPage({
             </CardBody>
           </Card>
         )}
+
+        {/* 통합 타임라인 — 방문·상담·회수권 시간순 */}
+        {(() => {
+          type Ev = {
+            date: string;
+            icon: string;
+            title: string;
+            sub?: string;
+            color: string;
+          };
+          const events: Ev[] = [];
+          for (const v of visits) {
+            const amt = v.sales.reduce((s, l) => s + l.cash + l.card, 0);
+            events.push({
+              date: v.visitDate,
+              icon: "🪑",
+              title: `방문 · ${partLabel(v.partId)}`,
+              sub:
+                (v.sales.map((s) => s.serviceName).join(", ") || "시술 기록") +
+                (amt > 0 ? ` · ${fmtWon(amt)}` : ""),
+              color: "#A26F54",
+            });
+          }
+          for (const c of consultations) {
+            events.push({
+              date: c.consultedAt.slice(0, 10),
+              icon: "💬",
+              title: "상담",
+              sub: c.content.length > 40 ? `${c.content.slice(0, 40)}…` : c.content,
+              color: "#8FA37A",
+            });
+          }
+          for (const p of passes) {
+            events.push({
+              date: p.createdAt.slice(0, 10),
+              icon: "🎟️",
+              title: `회수권 등록 · ${p.serviceName} ${p.totalCount}회`,
+              sub: `${passRemaining(p)}회 남음`,
+              color: "#71875E",
+            });
+          }
+          events.sort((a, b) => b.date.localeCompare(a.date));
+          if (events.length === 0) return null;
+          return (
+            <Card>
+              <CardHeader>
+                <CardTitle>통합 타임라인</CardTitle>
+              </CardHeader>
+              <CardBody>
+                <div className="space-y-3">
+                  {events.map((e, i) => (
+                    <div key={i} className="flex gap-3">
+                      <div className="flex flex-col items-center">
+                        <span
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs"
+                          style={{ backgroundColor: `${e.color}22` }}
+                        >
+                          {e.icon}
+                        </span>
+                        {i < events.length - 1 && (
+                          <span className="mt-1 w-px flex-1 bg-sand-200" />
+                        )}
+                      </div>
+                      <div className="min-w-0 pb-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] tabular text-sand-500">
+                            {fmtDate(e.date)}
+                          </span>
+                          <span className="truncate text-sm font-medium text-sand-800">
+                            {e.title}
+                          </span>
+                        </div>
+                        {e.sub && (
+                          <div className="truncate text-[11px] text-sand-500">
+                            {e.sub}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardBody>
+            </Card>
+          );
+        })()}
 
         {/* 방문 이력 */}
         <Card>
