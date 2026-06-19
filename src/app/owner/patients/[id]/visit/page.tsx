@@ -61,6 +61,7 @@ export default function VisitChartPage({
   const [payCash, setPayCash] = useState(0);
   const [payHospital, setPayHospital] = useState(0);
   const [payCorp, setPayCorp] = useState(0);
+  const [payLegacy, setPayLegacy] = useState(0); // 기존(미분류) 카드 — 과거 데이터 수정 시에만 노출
   const [payTouched, setPayTouched] = useState(false); // 사용자가 직접 금액을 만졌는지
   // 회수권 — 환자 보유 회수권 + 이번 방문 차감/구매
   const [patientPasses, setPatientPasses] = useState<ServicePass[]>([]);
@@ -168,10 +169,11 @@ export default function VisitChartPage({
       grossSum += price * q;
     }
     setQty(nextQty);
-    // 결제 주체 복원 (기존 카드는 병원포스로 합쳐 총액 일치)
+    // 결제 주체 복원 (기존 카드는 '기존카드'로 그대로 — 자동 재분류 안 함)
     setPayCash(cashSum);
-    setPayHospital(hospSum + legacySum);
+    setPayHospital(hospSum);
     setPayCorp(corpSum);
+    setPayLegacy(legacySum);
     setPayTouched(true);
     const paidTotal = cashSum + hospSum + corpSum + legacySum;
     setDiscountRate(
@@ -376,7 +378,7 @@ export default function VisitChartPage({
   // 결제 총액 = 시술 최종액 + 회수권 구매액
   const passBuyTotal = passBuys.reduce((s, b) => s + Math.max(0, b.amount), 0);
   const grandPaid = calc.finalTotal + passBuyTotal;
-  const paySum = payCash + payHospital + payCorp;
+  const paySum = payCash + payHospital + payCorp + payLegacy;
 
   // 사용자가 직접 금액을 만지지 않았으면 전액 '병원포스'로 기본 배치
   useEffect(() => {
@@ -384,19 +386,20 @@ export default function VisitChartPage({
       setPayCash(0);
       setPayHospital(grandPaid);
       setPayCorp(0);
+      setPayLegacy(0);
     }
   }, [grandPaid, payTouched]);
 
   // 결제 주체별 금액을 라인들에 정확히 분배 (greedy — 라인합·주체합 모두 정확)
   function distributeSources(
     lines: { amount: number }[],
-    src: { cash: number; hospital: number; corp: number }
-  ): { cash: number; hospital: number; corp: number }[] {
-    const rem = { cash: src.cash, hospital: src.hospital, corp: src.corp };
-    const order: ("cash" | "hospital" | "corp")[] = ["cash", "hospital", "corp"];
+    src: { cash: number; hospital: number; corp: number; legacy: number }
+  ): { cash: number; hospital: number; corp: number; legacy: number }[] {
+    const rem = { cash: src.cash, hospital: src.hospital, corp: src.corp, legacy: src.legacy };
+    const order: ("cash" | "hospital" | "corp" | "legacy")[] = ["cash", "hospital", "corp", "legacy"];
     return lines.map((l) => {
       let need = l.amount;
-      const out = { cash: 0, hospital: 0, corp: 0 };
+      const out = { cash: 0, hospital: 0, corp: 0, legacy: 0 };
       for (const k of order) {
         if (need <= 0) break;
         const take = Math.min(need, rem[k]);
@@ -434,9 +437,9 @@ export default function VisitChartPage({
     const grand = paidLines.reduce((s, l) => s + l.amount, 0);
 
     // 결제 주체 금액 합이 결제액과 다르면 저장 막기
-    if (payCash + payHospital + payCorp !== grand) {
+    if (payCash + payHospital + payCorp + payLegacy !== grand) {
       alert(
-        `결제 주체 금액 합(${fmtWon(payCash + payHospital + payCorp)})이 ` +
+        `결제 주체 금액 합(${fmtWon(payCash + payHospital + payCorp + payLegacy)})이 ` +
           `최종 결제액(${fmtWon(grand)})과 달라요.\n현금·병원포스·법인포스 금액을 맞춰주세요.`
       );
       return;
@@ -446,13 +449,14 @@ export default function VisitChartPage({
       cash: payCash,
       hospital: payHospital,
       corp: payCorp,
+      legacy: payLegacy,
     });
     const paidSaleLines: VisitSaleLine[] = paidLines.map((l, i) => ({
       serviceId: l.serviceId,
       serviceName: l.serviceName,
       partId: l.partId,
       cash: splits[i].cash,
-      card: 0,
+      card: splits[i].legacy,
       hospitalCard: splits[i].hospital,
       corpCard: splits[i].corp,
     }));
@@ -884,6 +888,7 @@ export default function VisitChartPage({
                       setPayCash(k === "cash" ? grandPaid : 0);
                       setPayHospital(k === "hospital" ? grandPaid : 0);
                       setPayCorp(k === "corp" ? grandPaid : 0);
+                      setPayLegacy(0);
                     }}
                     className="rounded-lg border border-sand-200 bg-white px-1 py-2 text-[11px] font-semibold text-sand-600 active:scale-95"
                   >
@@ -897,6 +902,14 @@ export default function VisitChartPage({
                     ["💵 현금", payCash, setPayCash],
                     ["🏥 병원포스", payHospital, setPayHospital],
                     ["🏢 법인포스", payCorp, setPayCorp],
+                    // 기존(미분류) 카드 — 과거 데이터 수정 시에만 노출
+                    ...(payLegacy > 0
+                      ? ([["🗂 기존카드", payLegacy, setPayLegacy]] as [
+                          string,
+                          number,
+                          (n: number) => void
+                        ][])
+                      : []),
                   ] as [string, number, (n: number) => void][]
                 ).map(([label, val, setter]) => (
                   <div key={label} className="flex items-center justify-between gap-2">
