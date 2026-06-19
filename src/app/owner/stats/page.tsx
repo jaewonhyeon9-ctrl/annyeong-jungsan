@@ -5,7 +5,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { getDataSource } from "@/lib/data";
 import { fmtWon, todayKST } from "@/lib/format";
-import type { PatientSalesRow, SalesSummary } from "@/lib/types";
+import { PARTS, type PatientSalesRow, type SalesSummary } from "@/lib/types";
+
+const partLabel = (id: string) => PARTS.find((p) => p.id === id)?.label ?? id;
 import { useCurrentCenter } from "@/lib/use-current-center";
 
 function todayRange() {
@@ -71,6 +73,44 @@ export default function OwnerStatsPage() {
         <SummaryCard title="오늘" s={today} busy={busy} />
         <SummaryCard title="이번 달" s={month} busy={busy} accent />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>이번 달 파트별 매출</CardTitle>
+        </CardHeader>
+        <CardBody>
+          {busy ? (
+            <div className="py-6 text-center text-xs text-sand-500">로딩 중...</div>
+          ) : !month || month.byPart.length === 0 ? (
+            <div className="py-6 text-center text-xs text-sand-500">
+              이번 달 매출 기록이 없어요.
+            </div>
+          ) : (
+            <ul className="space-y-1.5">
+              {month.byPart.map((p) => (
+                <li
+                  key={p.partId}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-sand-100 bg-white px-3 py-2"
+                >
+                  <span className="text-sm font-medium text-sand-800">
+                    {partLabel(p.partId)}
+                  </span>
+                  <div className="text-right">
+                    <div className="text-sm font-semibold text-clay-700 tabular">
+                      {fmtWon(p.total)}
+                    </div>
+                    <div className="text-[10px] text-sand-500 tabular leading-relaxed">
+                      현금 {fmtWon(p.cash)} · 병원 {fmtWon(p.hospitalCard)} · 법인{" "}
+                      {fmtWon(p.corpCard)}
+                      {p.legacyCard > 0 && <> · 기존 {fmtWon(p.legacyCard)}</>}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardBody>
+      </Card>
 
       <Card>
         <CardHeader>

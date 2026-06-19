@@ -274,6 +274,17 @@ export interface ServicePassCreateInput {
 // ============================================================
 // 통계 — 가벼운 집계 결과 타입
 // ============================================================
+// 파트별 매출 1행 (주체별 분해 포함)
+export interface PartSalesRow {
+  partId: PartId;
+  cash: number;
+  hospitalCard: number;
+  corpCard: number;
+  legacyCard: number;
+  card: number; // 카드 합(병원+법인+기존)
+  total: number;
+}
+
 export interface SalesSummary {
   totalCash: number;       // 현금
   totalCard: number;       // 카드 전체(병원+법인+기존)
@@ -283,6 +294,7 @@ export interface SalesSummary {
   total: number;
   visitCount: number;
   patientCount: number;
+  byPart: PartSalesRow[];    // 파트별 분해 (매출 있는 파트만)
 }
 
 export interface PatientSalesRow {

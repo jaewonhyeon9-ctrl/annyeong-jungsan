@@ -699,7 +699,7 @@ export const mockDataSource: DataSource = {
 
   stats: {
     async summary(_centerId: string, _from: string, _to: string): Promise<SalesSummary> {
-      return { totalCash: 0, totalCard: 0, totalHospitalCard: 0, totalCorpCard: 0, totalLegacyCard: 0, total: 0, visitCount: 0, patientCount: 0 };
+      return { totalCash: 0, totalCard: 0, totalHospitalCard: 0, totalCorpCard: 0, totalLegacyCard: 0, total: 0, visitCount: 0, patientCount: 0, byPart: [] };
     },
     async topPatients(
       _centerId: string,

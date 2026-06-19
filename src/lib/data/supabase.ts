@@ -1733,7 +1733,7 @@ export const supabaseDataSource: DataSource = {
       const { data: vsl, error: vErr } = await sb
         .from("visit_sale_lines")
         .select(
-          `cash, card, hospital_card, corp_card,
+          `cash, card, hospital_card, corp_card, part_id,
            visit:visits!inner(id, center_id, visit_date, patient_id)`
         )
         .eq("visit.center_id", centerId)
@@ -1743,7 +1743,7 @@ export const supabaseDataSource: DataSource = {
       const { data: sl, error: sErr } = await sb
         .from("sale_lines")
         .select(
-          `cash, card, hospital_card, corp_card,
+          `cash, card, hospital_card, corp_card, part_id,
            entry:daily_entries!inner(id, center_id, entry_date)`
         )
         .eq("entry.center_id", centerId)
@@ -1756,17 +1756,39 @@ export const supabaseDataSource: DataSource = {
       let totalCorpCard = 0;
       const visitIds = new Set<string>();
       const patientIds = new Set<string>();
+      const partAgg = new Map<
+        PartId,
+        { cash: number; hosp: number; corp: number; legacy: number }
+      >();
+      const addPart = (
+        pid: PartId,
+        cash: number,
+        hosp: number,
+        corp: number,
+        legacy: number
+      ) => {
+        const e = partAgg.get(pid) ?? { cash: 0, hosp: 0, corp: 0, legacy: 0 };
+        e.cash += cash;
+        e.hosp += hosp;
+        e.corp += corp;
+        e.legacy += legacy;
+        partAgg.set(pid, e);
+      };
       for (const r of (vsl ?? []) as Array<{
         cash: number;
         card: number;
         hospital_card: number | null;
         corp_card: number | null;
+        part_id: PartId;
         visit: { id: string; patient_id: string } | { id: string; patient_id: string }[];
       }>) {
+        const hosp = r.hospital_card ?? 0;
+        const corp = r.corp_card ?? 0;
         totalCash += r.cash;
         totalLegacyCard += r.card;
-        totalHospitalCard += r.hospital_card ?? 0;
-        totalCorpCard += r.corp_card ?? 0;
+        totalHospitalCard += hosp;
+        totalCorpCard += corp;
+        addPart(r.part_id, r.cash, hosp, corp, r.card);
         const vv = Array.isArray(r.visit) ? r.visit[0] : r.visit;
         if (vv) {
           visitIds.add(vv.id);
@@ -1778,13 +1800,29 @@ export const supabaseDataSource: DataSource = {
         card: number;
         hospital_card: number | null;
         corp_card: number | null;
+        part_id: PartId;
       }>) {
+        const hosp = r.hospital_card ?? 0;
+        const corp = r.corp_card ?? 0;
         totalCash += r.cash;
         totalLegacyCard += r.card;
-        totalHospitalCard += r.hospital_card ?? 0;
-        totalCorpCard += r.corp_card ?? 0;
+        totalHospitalCard += hosp;
+        totalCorpCard += corp;
+        addPart(r.part_id, r.cash, hosp, corp, r.card);
       }
       const totalCard = totalLegacyCard + totalHospitalCard + totalCorpCard;
+      const byPart = Array.from(partAgg.entries())
+        .map(([partId, v]) => ({
+          partId,
+          cash: v.cash,
+          hospitalCard: v.hosp,
+          corpCard: v.corp,
+          legacyCard: v.legacy,
+          card: v.hosp + v.corp + v.legacy,
+          total: v.cash + v.hosp + v.corp + v.legacy,
+        }))
+        .filter((p) => p.total !== 0)
+        .sort((a, b) => b.total - a.total);
       return {
         totalCash,
         totalCard,
@@ -1794,6 +1832,7 @@ export const supabaseDataSource: DataSource = {
         total: totalCash + totalCard,
         visitCount: visitIds.size,
         patientCount: patientIds.size,
+        byPart,
       };
     },
     async topPatients(centerId, from, to, limit = 10): Promise<PatientSalesRow[]> {
