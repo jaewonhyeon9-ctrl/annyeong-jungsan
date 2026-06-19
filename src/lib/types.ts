@@ -275,8 +275,11 @@ export interface ServicePassCreateInput {
 // 통계 — 가벼운 집계 결과 타입
 // ============================================================
 export interface SalesSummary {
-  totalCash: number;
-  totalCard: number;
+  totalCash: number;       // 현금
+  totalCard: number;       // 카드 전체(병원+법인+기존)
+  totalHospitalCard: number; // 병원포스
+  totalCorpCard: number;     // 법인포스
+  totalLegacyCard: number;   // 기존(미분류) 카드
   total: number;
   visitCount: number;
   patientCount: number;
@@ -307,8 +310,28 @@ export interface SaleLine {
   serviceId: string;
   serviceName: string; // snapshot — 시술명 바뀌어도 과거 기록 유지
   partId: PartId;
-  cash: number;
-  card: number;
+  cash: number;          // 현금
+  card: number;          // 기존(미분류) 카드 — 과거 데이터 보존용
+  hospitalCard?: number; // 병원포스기
+  corpCard?: number;     // 법인포스기
+}
+
+// 결제 주체(입력 주체) — 현금 / 병원포스 / 법인포스 + 기존(미분류) 카드
+export type PaySource = "cash" | "hospital" | "corp" | "legacy";
+export const PAY_SOURCES: { id: PaySource; label: string; short: string }[] = [
+  { id: "cash", label: "현금", short: "현금" },
+  { id: "hospital", label: "병원포스", short: "병원" },
+  { id: "corp", label: "법인포스", short: "법인" },
+  { id: "legacy", label: "기존카드(미분류)", short: "기존" },
+];
+// 한 라인의 주체별 금액 합산 헬퍼
+export function lineBySource(l: { cash: number; card: number; hospitalCard?: number; corpCard?: number }) {
+  return {
+    cash: l.cash || 0,
+    hospital: l.hospitalCard || 0,
+    corp: l.corpCard || 0,
+    legacy: l.card || 0,
+  };
 }
 
 export interface ProductLine {
@@ -409,8 +432,10 @@ export interface VisitSaleLine {
   serviceId: string;
   serviceName: string;
   partId: PartId;
-  cash: number;
-  card: number;
+  cash: number;          // 현금
+  card: number;          // 기존(미분류) 카드 — 과거 데이터 보존용
+  hospitalCard?: number; // 병원포스기
+  corpCard?: number;     // 법인포스기
 }
 
 export interface Visit {

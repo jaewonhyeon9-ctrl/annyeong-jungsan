@@ -15,7 +15,6 @@ import {
   passRemaining,
   type Patient,
   type PartId,
-  type PaymentMethod,
   type ServicePass,
   type VisitSaleLine,
 } from "@/lib/types";
@@ -58,7 +57,11 @@ export default function VisitChartPage({
   const [partId, setPartId] = useState<PartId>("scalp");
   const [qty, setQty] = useState<Record<string, number>>({});
   const [discountRate, setDiscountRate] = useState(0);
-  const [payMethod, setPayMethod] = useState<PaymentMethod>("card");
+  // 결제 주체별 금액 — 현금 / 병원포스 / 법인포스 (분할 입력)
+  const [payCash, setPayCash] = useState(0);
+  const [payHospital, setPayHospital] = useState(0);
+  const [payCorp, setPayCorp] = useState(0);
+  const [payTouched, setPayTouched] = useState(false); // 사용자가 직접 금액을 만졌는지
   // 회수권 — 환자 보유 회수권 + 이번 방문 차감/구매
   const [patientPasses, setPatientPasses] = useState<ServicePass[]>([]);
   const [passUse, setPassUse] = useState<Record<string, number>>({}); // passId → 이번에 차감할 횟수
@@ -149,20 +152,28 @@ export default function VisitChartPage({
     if (!pendingSales || allServices.length === 0) return;
     const nextQty: Record<string, number> = {};
     let cashSum = 0;
-    let cardSum = 0;
+    let hospSum = 0;
+    let corpSum = 0;
+    let legacySum = 0;
     let grossSum = 0;
     for (const s of pendingSales) {
       const price = allServices.find((x) => x.id === s.serviceId)?.defaultPrice ?? 0;
-      const paid = s.cash + s.card;
+      const paid = s.cash + s.card + (s.hospitalCard ?? 0) + (s.corpCard ?? 0);
       const q = price > 0 ? Math.max(1, Math.round(paid / price)) : 1;
       nextQty[s.serviceId] = q;
       cashSum += s.cash;
-      cardSum += s.card;
+      hospSum += s.hospitalCard ?? 0;
+      corpSum += s.corpCard ?? 0;
+      legacySum += s.card; // 기존(미분류) 카드 — 편집 저장 시 병원포스로 재분류됨
       grossSum += price * q;
     }
     setQty(nextQty);
-    setPayMethod(cardSum >= cashSum ? "card" : "cash");
-    const paidTotal = cashSum + cardSum;
+    // 결제 주체 복원 (기존 카드는 병원포스로 합쳐 총액 일치)
+    setPayCash(cashSum);
+    setPayHospital(hospSum + legacySum);
+    setPayCorp(corpSum);
+    setPayTouched(true);
+    const paidTotal = cashSum + hospSum + corpSum + legacySum;
     setDiscountRate(
       grossSum > 0 && paidTotal < grossSum
         ? Math.round((1 - paidTotal / grossSum) * 100)
@@ -238,7 +249,13 @@ export default function VisitChartPage({
         }
       }
       setQty(nextQty);
-      if (cashSum + cardSum > 0) setPayMethod(cardSum >= cashSum ? "card" : "cash");
+      // OCR 영수증 — 현금/카드 인식분을 현금/병원포스로 기본 배치 (저장 전 수정 가능)
+      if (cashSum + cardSum > 0) {
+        setPayCash(cashSum);
+        setPayHospital(cardSum);
+        setPayCorp(0);
+        setPayTouched(true);
+      }
 
       // 매칭된 시술이 보이도록 가장 많이 매칭된 파트로 전환 (권한 내에서만)
       const parts = Object.keys(partCount).sort(
@@ -351,37 +368,93 @@ export default function VisitChartPage({
     setPassBuys((arr) => arr.filter((_, i) => i !== idx));
   }
 
-  // 저장용 — 할인 적용 최종액을 라인별로 분배하고 결제방식(현금/카드)에 몰아준다.
-  // 라운딩 오차는 첫 라인이 흡수해 합계가 finalTotal과 정확히 일치하도록 보정.
-  function buildSales(): VisitSaleLine[] {
-    const factor = 1 - calc.rate / 100;
-    const amounts = calc.lines.map((l) => Math.round(l.gross * factor));
-    const diff = calc.finalTotal - amounts.reduce((a, b) => a + b, 0);
-    if (amounts.length > 0) amounts[0] += diff;
-    return calc.lines.map((l, i) => ({
-      serviceId: l.serviceId,
-      serviceName: l.serviceName,
-      partId: l.partId,
-      cash: payMethod === "cash" ? amounts[i] : 0,
-      card: payMethod === "card" ? amounts[i] : 0,
-    }));
-  }
-
   // 회수권 차감 대상 (count>0) — 0원 시술 라인으로 차트에 남긴다.
   const passUseEntries = patientPasses
     .map((p) => ({ pass: p, count: passUse[p.id] ?? 0 }))
     .filter((e) => e.count > 0);
 
+  // 결제 총액 = 시술 최종액 + 회수권 구매액
+  const passBuyTotal = passBuys.reduce((s, b) => s + Math.max(0, b.amount), 0);
+  const grandPaid = calc.finalTotal + passBuyTotal;
+  const paySum = payCash + payHospital + payCorp;
+
+  // 사용자가 직접 금액을 만지지 않았으면 전액 '병원포스'로 기본 배치
+  useEffect(() => {
+    if (!payTouched) {
+      setPayCash(0);
+      setPayHospital(grandPaid);
+      setPayCorp(0);
+    }
+  }, [grandPaid, payTouched]);
+
+  // 결제 주체별 금액을 라인들에 정확히 분배 (greedy — 라인합·주체합 모두 정확)
+  function distributeSources(
+    lines: { amount: number }[],
+    src: { cash: number; hospital: number; corp: number }
+  ): { cash: number; hospital: number; corp: number }[] {
+    const rem = { cash: src.cash, hospital: src.hospital, corp: src.corp };
+    const order: ("cash" | "hospital" | "corp")[] = ["cash", "hospital", "corp"];
+    return lines.map((l) => {
+      let need = l.amount;
+      const out = { cash: 0, hospital: 0, corp: 0 };
+      for (const k of order) {
+        if (need <= 0) break;
+        const take = Math.min(need, rem[k]);
+        out[k] = take;
+        rem[k] -= take;
+        need -= take;
+      }
+      if (need > 0) out.cash += need; // 주체합이 모자라면 현금 흡수(검증 통과 시 미발생)
+      return out;
+    });
+  }
+
   async function handleSave() {
     if (!patient) return;
 
-    // 회수권 구매(유료) 라인 — 할인 미적용, 결제방식에 몰아줌
-    const passBuyLines: VisitSaleLine[] = passBuys.map((b) => ({
-      serviceId: b.serviceId,
-      serviceName: `${b.serviceName} ${b.count}회권`,
-      partId: b.partId,
-      cash: payMethod === "cash" ? b.amount : 0,
-      card: payMethod === "card" ? b.amount : 0,
+    // 유료 라인 = 시술(할인 적용) + 회수권 구매. 라운딩 오차는 첫 라인이 흡수.
+    const factor = 1 - calc.rate / 100;
+    const svcAmounts = calc.lines.map((l) => Math.round(l.gross * factor));
+    const diff = calc.finalTotal - svcAmounts.reduce((a, b) => a + b, 0);
+    if (svcAmounts.length > 0) svcAmounts[0] += diff;
+    const paidLines = [
+      ...calc.lines.map((l, i) => ({
+        serviceId: l.serviceId,
+        serviceName: l.serviceName,
+        partId: l.partId,
+        amount: svcAmounts[i],
+      })),
+      ...passBuys.map((b) => ({
+        serviceId: b.serviceId,
+        serviceName: `${b.serviceName} ${b.count}회권`,
+        partId: b.partId,
+        amount: Math.max(0, b.amount),
+      })),
+    ];
+    const grand = paidLines.reduce((s, l) => s + l.amount, 0);
+
+    // 결제 주체 금액 합이 결제액과 다르면 저장 막기
+    if (payCash + payHospital + payCorp !== grand) {
+      alert(
+        `결제 주체 금액 합(${fmtWon(payCash + payHospital + payCorp)})이 ` +
+          `최종 결제액(${fmtWon(grand)})과 달라요.\n현금·병원포스·법인포스 금액을 맞춰주세요.`
+      );
+      return;
+    }
+
+    const splits = distributeSources(paidLines, {
+      cash: payCash,
+      hospital: payHospital,
+      corp: payCorp,
+    });
+    const paidSaleLines: VisitSaleLine[] = paidLines.map((l, i) => ({
+      serviceId: l.serviceId,
+      serviceName: l.serviceName,
+      partId: l.partId,
+      cash: splits[i].cash,
+      card: 0,
+      hospitalCard: splits[i].hospital,
+      corpCard: splits[i].corp,
     }));
     // 회수권 사용(차감) 라인 — 결제 0원, 기록용
     const passUseLines: VisitSaleLine[] = passUseEntries.map((e) => ({
@@ -390,9 +463,11 @@ export default function VisitChartPage({
       partId: e.pass.partId,
       cash: 0,
       card: 0,
+      hospitalCard: 0,
+      corpCard: 0,
     }));
 
-    const sales = [...buildSales(), ...passBuyLines, ...passUseLines];
+    const sales = [...paidSaleLines, ...passUseLines];
 
     if (sales.length === 0) {
       alert("담긴 시술이 없습니다. 시술·회수권 버튼을 눌러 추가하세요.");
@@ -779,32 +854,76 @@ export default function VisitChartPage({
               </div>
             </div>
 
-            {/* 결제 방식 — 총액을 현금/카드 중 하나로 */}
-            <div className="mt-4 space-y-1.5">
-              <div className="text-xs uppercase tracking-wider text-sand-500">
-                결제 방식
+            {/* 결제 주체 — 현금 / 병원포스 / 법인포스 분할 입력 */}
+            <div className="mt-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="text-xs uppercase tracking-wider text-sand-500">
+                  결제 주체 (입력처별 금액)
+                </div>
+                <div
+                  className={`text-[11px] tabular font-semibold ${
+                    paySum === grandPaid ? "text-moss-600" : "text-clay-600"
+                  }`}
+                >
+                  합 {fmtWon(paySum)} / {fmtWon(grandPaid)}
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-1.5">
                 {(
                   [
-                    { id: "cash", label: "💵 현금" },
-                    { id: "card", label: "💳 카드" },
-                  ] as { id: PaymentMethod; label: string }[]
-                ).map((m) => (
+                    ["cash", "💵 현금 전액"],
+                    ["hospital", "🏥 병원포스 전액"],
+                    ["corp", "🏢 법인포스 전액"],
+                  ] as ["cash" | "hospital" | "corp", string][]
+                ).map(([k, label]) => (
                   <button
-                    key={m.id}
+                    key={k}
                     type="button"
-                    onClick={() => setPayMethod(m.id)}
-                    className={`rounded-xl border px-4 py-3 text-sm font-semibold transition ${
-                      payMethod === m.id
-                        ? "border-clay-500 bg-clay-500/10 text-clay-700"
-                        : "border-sand-200 bg-white text-sand-600"
-                    }`}
+                    onClick={() => {
+                      setPayTouched(true);
+                      setPayCash(k === "cash" ? grandPaid : 0);
+                      setPayHospital(k === "hospital" ? grandPaid : 0);
+                      setPayCorp(k === "corp" ? grandPaid : 0);
+                    }}
+                    className="rounded-lg border border-sand-200 bg-white px-1 py-2 text-[11px] font-semibold text-sand-600 active:scale-95"
                   >
-                    {m.label}
+                    {label}
                   </button>
                 ))}
               </div>
+              <div className="space-y-1.5">
+                {(
+                  [
+                    ["💵 현금", payCash, setPayCash],
+                    ["🏥 병원포스", payHospital, setPayHospital],
+                    ["🏢 법인포스", payCorp, setPayCorp],
+                  ] as [string, number, (n: number) => void][]
+                ).map(([label, val, setter]) => (
+                  <div key={label} className="flex items-center justify-between gap-2">
+                    <span className="text-sm text-sand-700">{label}</span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      value={val || ""}
+                      placeholder="0"
+                      onChange={(e) => {
+                        setPayTouched(true);
+                        setter(Math.max(0, Number(e.target.value) || 0));
+                      }}
+                      className="w-32 rounded-lg border border-sand-200 bg-white px-2 py-1.5 text-right text-sm tabular focus:border-clay-400 focus:outline-none"
+                    />
+                  </div>
+                ))}
+              </div>
+              {paySum !== grandPaid && (
+                <div className="text-[11px] text-clay-600">
+                  주체별 합이 결제액과 달라요 —{" "}
+                  {paySum < grandPaid
+                    ? `${fmtWon(grandPaid - paySum)} 부족`
+                    : `${fmtWon(paySum - grandPaid)} 초과`}
+                </div>
+              )}
             </div>
           </CardBody>
         </Card>

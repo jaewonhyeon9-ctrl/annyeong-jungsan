@@ -870,7 +870,7 @@ export const supabaseDataSource: DataSource = {
       if (visitIds.length > 0) {
         const { data: saleRows, error: saleError } = await sb
           .from("visit_sale_lines")
-          .select("visit_id, service_id, service_name, part_id, cash, card")
+          .select("visit_id, service_id, service_name, part_id, cash, card, hospital_card, corp_card")
           .in("visit_id", visitIds);
         if (saleError) throw saleError;
         for (const r of (saleRows ?? []) as {
@@ -880,6 +880,8 @@ export const supabaseDataSource: DataSource = {
           part_id: PartId;
           cash: number;
           card: number;
+          hospital_card: number | null;
+          corp_card: number | null;
         }[]) {
           const lines = salesByVisit.get(r.visit_id) ?? [];
           lines.push({
@@ -888,6 +890,8 @@ export const supabaseDataSource: DataSource = {
             partId: r.part_id,
             cash: r.cash,
             card: r.card,
+            hospitalCard: r.hospital_card ?? 0,
+            corpCard: r.corp_card ?? 0,
           });
           salesByVisit.set(r.visit_id, lines);
         }
@@ -907,7 +911,7 @@ export const supabaseDataSource: DataSource = {
       if (!data) return null;
       const { data: saleRows, error: saleErr } = await sb
         .from("visit_sale_lines")
-        .select("service_id, service_name, part_id, cash, card")
+        .select("service_id, service_name, part_id, cash, card, hospital_card, corp_card")
         .eq("visit_id", id);
       if (saleErr) throw saleErr;
       const sales = ((saleRows ?? []) as {
@@ -916,12 +920,16 @@ export const supabaseDataSource: DataSource = {
         part_id: PartId;
         cash: number;
         card: number;
+        hospital_card: number | null;
+        corp_card: number | null;
       }[]).map((r) => ({
         serviceId: r.service_id,
         serviceName: r.service_name,
         partId: r.part_id,
         cash: r.cash,
         card: r.card,
+        hospitalCard: r.hospital_card ?? 0,
+        corpCard: r.corp_card ?? 0,
       }));
       return rowToVisit(data, sales);
     },
@@ -953,6 +961,8 @@ export const supabaseDataSource: DataSource = {
             part_id: s.partId,
             cash: s.cash,
             card: s.card,
+            hospital_card: s.hospitalCard ?? 0,
+            corp_card: s.corpCard ?? 0,
           }))
         );
         if (salesError) throw salesError;
@@ -993,6 +1003,8 @@ export const supabaseDataSource: DataSource = {
               part_id: s.partId,
               cash: s.cash,
               card: s.card,
+            hospital_card: s.hospitalCard ?? 0,
+            corp_card: s.corpCard ?? 0,
             }))
           );
           if (insErr) throw insErr;
@@ -1039,7 +1051,7 @@ export const supabaseDataSource: DataSource = {
       if (entryIds.length > 0) {
         const { data: saleRows, error: saleErr } = await sb
           .from("sale_lines")
-          .select("entry_id, service_id, service_name, part_id, cash, card")
+          .select("entry_id, service_id, service_name, part_id, cash, card, hospital_card, corp_card")
           .in("entry_id", entryIds);
         if (saleErr) throw saleErr;
         saleLinesByEntry = new Map();
@@ -1050,6 +1062,8 @@ export const supabaseDataSource: DataSource = {
           part_id: PartId;
           cash: number;
           card: number;
+          hospital_card: number | null;
+          corp_card: number | null;
         }[]) {
           const arr = saleLinesByEntry.get(r.entry_id) ?? [];
           arr.push({
@@ -1058,6 +1072,8 @@ export const supabaseDataSource: DataSource = {
             partId: r.part_id,
             cash: r.cash,
             card: r.card,
+            hospitalCard: r.hospital_card ?? 0,
+            corpCard: r.corp_card ?? 0,
           });
           saleLinesByEntry.set(r.entry_id, arr);
         }
@@ -1094,7 +1110,7 @@ export const supabaseDataSource: DataSource = {
       if (visitIds.length > 0) {
         const { data: vsRows, error: vsErr } = await sb
           .from("visit_sale_lines")
-          .select("visit_id, service_id, service_name, part_id, cash, card")
+          .select("visit_id, service_id, service_name, part_id, cash, card, hospital_card, corp_card")
           .in("visit_id", visitIds);
         if (vsErr) throw vsErr;
         for (const r of (vsRows ?? []) as {
@@ -1104,6 +1120,8 @@ export const supabaseDataSource: DataSource = {
           part_id: PartId;
           cash: number;
           card: number;
+          hospital_card: number | null;
+          corp_card: number | null;
         }[]) {
           const arr = visitSalesByVisit.get(r.visit_id) ?? [];
           arr.push({
@@ -1112,6 +1130,8 @@ export const supabaseDataSource: DataSource = {
             partId: r.part_id,
             cash: r.cash,
             card: r.card,
+            hospitalCard: r.hospital_card ?? 0,
+            corpCard: r.corp_card ?? 0,
           });
           visitSalesByVisit.set(r.visit_id, arr);
         }
@@ -1176,6 +1196,8 @@ export const supabaseDataSource: DataSource = {
             part_id: s.partId,
             cash: s.cash,
             card: s.card,
+            hospital_card: s.hospitalCard ?? 0,
+            corp_card: s.corpCard ?? 0,
           }))
         );
         if (saleErr) throw saleErr;
@@ -1711,7 +1733,7 @@ export const supabaseDataSource: DataSource = {
       const { data: vsl, error: vErr } = await sb
         .from("visit_sale_lines")
         .select(
-          `cash, card,
+          `cash, card, hospital_card, corp_card,
            visit:visits!inner(id, center_id, visit_date, patient_id)`
         )
         .eq("visit.center_id", centerId)
@@ -1721,7 +1743,7 @@ export const supabaseDataSource: DataSource = {
       const { data: sl, error: sErr } = await sb
         .from("sale_lines")
         .select(
-          `cash, card,
+          `cash, card, hospital_card, corp_card,
            entry:daily_entries!inner(id, center_id, entry_date)`
         )
         .eq("entry.center_id", centerId)
@@ -1729,29 +1751,46 @@ export const supabaseDataSource: DataSource = {
         .lte("entry.entry_date", to);
       if (sErr) throw sErr;
       let totalCash = 0;
-      let totalCard = 0;
+      let totalLegacyCard = 0;
+      let totalHospitalCard = 0;
+      let totalCorpCard = 0;
       const visitIds = new Set<string>();
       const patientIds = new Set<string>();
       for (const r of (vsl ?? []) as Array<{
         cash: number;
         card: number;
+        hospital_card: number | null;
+        corp_card: number | null;
         visit: { id: string; patient_id: string } | { id: string; patient_id: string }[];
       }>) {
         totalCash += r.cash;
-        totalCard += r.card;
+        totalLegacyCard += r.card;
+        totalHospitalCard += r.hospital_card ?? 0;
+        totalCorpCard += r.corp_card ?? 0;
         const vv = Array.isArray(r.visit) ? r.visit[0] : r.visit;
         if (vv) {
           visitIds.add(vv.id);
           patientIds.add(vv.patient_id);
         }
       }
-      for (const r of (sl ?? []) as Array<{ cash: number; card: number }>) {
+      for (const r of (sl ?? []) as Array<{
+        cash: number;
+        card: number;
+        hospital_card: number | null;
+        corp_card: number | null;
+      }>) {
         totalCash += r.cash;
-        totalCard += r.card;
+        totalLegacyCard += r.card;
+        totalHospitalCard += r.hospital_card ?? 0;
+        totalCorpCard += r.corp_card ?? 0;
       }
+      const totalCard = totalLegacyCard + totalHospitalCard + totalCorpCard;
       return {
         totalCash,
         totalCard,
+        totalHospitalCard,
+        totalCorpCard,
+        totalLegacyCard,
         total: totalCash + totalCard,
         visitCount: visitIds.size,
         patientCount: patientIds.size,

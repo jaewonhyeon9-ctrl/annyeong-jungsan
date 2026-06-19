@@ -121,10 +121,11 @@ function buildSalesSheet(
     const byPart: Record<string, { cash: number; card: number }> =
       Object.fromEntries(PARTS.map((p) => [p.id, { cash: 0, card: 0 }]));
     for (const line of e.sales) {
+      const lineCard = line.card + (line.hospitalCard ?? 0) + (line.corpCard ?? 0);
       byPart[line.partId].cash += line.cash;
-      byPart[line.partId].card += line.card;
+      byPart[line.partId].card += lineCard;
       partTotals[line.partId].cash += line.cash;
-      partTotals[line.partId].card += line.card;
+      partTotals[line.partId].card += lineCard;
     }
     const dayCash = Object.values(byPart).reduce((s, v) => s + v.cash, 0);
     const dayCard = Object.values(byPart).reduce((s, v) => s + v.card, 0);

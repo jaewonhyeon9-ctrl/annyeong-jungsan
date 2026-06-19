@@ -139,8 +139,12 @@ function SummaryCard({
             >
               {fmtWon(s.total)}
             </div>
-            <div className="mt-1 text-[11px] text-sand-500 tabular">
-              현 {fmtWon(s.totalCash)} · 카 {fmtWon(s.totalCard)}
+            <div className="mt-1 text-[11px] text-sand-500 tabular leading-relaxed">
+              현금 {fmtWon(s.totalCash)} · 병원 {fmtWon(s.totalHospitalCard)} · 법인{" "}
+              {fmtWon(s.totalCorpCard)}
+              {s.totalLegacyCard > 0 && (
+                <> · 기존카드 {fmtWon(s.totalLegacyCard)}</>
+              )}
             </div>
             <div className="mt-1 text-[11px] text-sand-500 tabular">
               {s.visitCount}건 · 환자 {s.patientCount}명

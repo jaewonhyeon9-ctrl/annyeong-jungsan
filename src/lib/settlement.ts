@@ -43,9 +43,14 @@ export interface SettlementResult {
   entryCount: number;
 }
 
+// 한 라인의 카드 합 = 기존(미분류) + 병원포스 + 법인포스
+function cardOf(l: { card: number; hospitalCard?: number; corpCard?: number }): number {
+  return (l.card || 0) + (l.hospitalCard || 0) + (l.corpCard || 0);
+}
+
 function sumSaleLines(lines: SaleLine[]): { cash: number; card: number } {
   return lines.reduce(
-    (acc, l) => ({ cash: acc.cash + l.cash, card: acc.card + l.card }),
+    (acc, l) => ({ cash: acc.cash + l.cash, card: acc.card + cardOf(l) }),
     { cash: 0, card: 0 }
   );
 }
@@ -73,18 +78,19 @@ export function computeSettlement(
 
   for (const entry of entries) {
     for (const line of entry.sales) {
+      const lineCard = cardOf(line);
       totalCash += line.cash;
-      totalCard += line.card;
+      totalCard += lineCard;
 
       const existing = partAgg.get(line.partId);
       const vatExempt = rule.vatExemptParts.includes(line.partId);
       if (existing) {
         existing.cash += line.cash;
-        existing.card += line.card;
+        existing.card += lineCard;
       } else {
         partAgg.set(line.partId, {
           cash: line.cash,
-          card: line.card,
+          card: lineCard,
           vatExempt,
         });
       }
